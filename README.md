@@ -1,6 +1,5 @@
-# mism-registry
-
-FAIR-ready metadata registry for the MISM (Multiscale Immune Systems Modeling) ecosystem. Register biomedical models and datasets, track execution, and query data lineage.
+# metadata-schema
+Versioned FAIR-compliant metadata schemas and validation tools supporting model registration, discovery, and interoperability within the MISM ecosystem.
 
 ## Installation
 
