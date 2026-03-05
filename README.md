@@ -4,13 +4,13 @@ Versioned FAIR-compliant metadata schemas and validation tools supporting model 
 ## Installation
 
 ```bash
-pip install mism-registry
+uv add mism-registry
 ```
 
-For development (includes pytest, mypy, ruff):
+Or with pip:
 
 ```bash
-pip install -e ".[dev]"
+pip install mism-registry
 ```
 
 **Requires Python 3.10+.** No runtime dependencies — stdlib only.
@@ -294,22 +294,26 @@ from mism_registry import (
 
 ## Development
 
-```bash
-# Create a virtual environment
-python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
 
-# Install with dev dependencies
-pip install -e ".[dev]"
+```bash
+# Install dependencies (creates .venv automatically)
+uv sync --group dev
 
 # Run tests
-pytest
+uv run pytest
+
+# Run tests with coverage
+uv run pytest --cov=mism_registry --cov-report=term-missing
 
 # Type check
-mypy src/mism_registry/
+uv run mypy src/mism_registry/
 
 # Lint
-ruff check src/ tests/
+uv run ruff check src/ tests/
+
+# Format
+uv run ruff format src/ tests/
 ```
 
 ## License
