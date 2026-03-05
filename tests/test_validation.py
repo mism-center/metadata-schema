@@ -28,58 +28,42 @@ from mism_registry.validation import (
 
 class TestValidateResourceRequiredFields:
     def test_valid_resource(self):
-        r = Resource(
-            name="test", resource_type=ResourceType.DATASET, location_uri="s3://x"
-        )
+        r = Resource(name="test", resource_type=ResourceType.DATASET, location_uri="s3://x")
         validate_resource_required_fields(r)  # Should not raise
 
     def test_empty_name_raises(self):
-        r = Resource(
-            name="", resource_type=ResourceType.DATASET, location_uri="s3://x"
-        )
+        r = Resource(name="", resource_type=ResourceType.DATASET, location_uri="s3://x")
         with pytest.raises(ValidationError, match="name"):
             validate_resource_required_fields(r)
 
     def test_whitespace_name_raises(self):
-        r = Resource(
-            name="   ", resource_type=ResourceType.DATASET, location_uri="s3://x"
-        )
+        r = Resource(name="   ", resource_type=ResourceType.DATASET, location_uri="s3://x")
         with pytest.raises(ValidationError, match="name"):
             validate_resource_required_fields(r)
 
     def test_empty_location_uri_raises(self):
-        r = Resource(
-            name="test", resource_type=ResourceType.DATASET, location_uri=""
-        )
+        r = Resource(name="test", resource_type=ResourceType.DATASET, location_uri="")
         with pytest.raises(ValidationError, match="location_uri"):
             validate_resource_required_fields(r)
 
     def test_whitespace_location_uri_raises(self):
-        r = Resource(
-            name="test", resource_type=ResourceType.DATASET, location_uri="   "
-        )
+        r = Resource(name="test", resource_type=ResourceType.DATASET, location_uri="   ")
         with pytest.raises(ValidationError, match="location_uri"):
             validate_resource_required_fields(r)
 
 
 class TestValidateExecutionFields:
     def test_dataset_no_execution_type_ok(self):
-        r = Resource(
-            name="test", resource_type=ResourceType.DATASET, location_uri="s3://x"
-        )
+        r = Resource(name="test", resource_type=ResourceType.DATASET, location_uri="s3://x")
         validate_execution_fields(r)  # Should not raise
 
     def test_model_without_execution_type_raises(self):
-        r = Resource(
-            name="test", resource_type=ResourceType.MODEL, location_uri="s3://x"
-        )
+        r = Resource(name="test", resource_type=ResourceType.MODEL, location_uri="s3://x")
         with pytest.raises(ValidationError, match="execution_type"):
             validate_execution_fields(r)
 
     def test_tool_without_execution_type_raises(self):
-        r = Resource(
-            name="test", resource_type=ResourceType.TOOL, location_uri="s3://x"
-        )
+        r = Resource(name="test", resource_type=ResourceType.TOOL, location_uri="s3://x")
         with pytest.raises(ValidationError, match="execution_type"):
             validate_execution_fields(r)
 
@@ -107,9 +91,7 @@ class TestValidateExecutionFields:
 
 class TestValidateResourceIsActive:
     def test_active_resource_passes(self):
-        r = Resource(
-            name="test", resource_type=ResourceType.DATASET, location_uri="s3://x"
-        )
+        r = Resource(name="test", resource_type=ResourceType.DATASET, location_uri="s3://x")
         validate_resource_is_active(r)  # Should not raise
 
     def test_superseded_resource_raises(self):
@@ -185,9 +167,7 @@ class TestCheckIOSpecHandshake:
             check_iospec_handshake(spec, resources)
 
     def test_optional_slot_skipped(self):
-        spec = IOSpec(
-            inputs=(IOSlot(name="optional_in", tags=("fasta",), required=False),)
-        )
+        spec = IOSpec(inputs=(IOSlot(name="optional_in", tags=("fasta",), required=False),))
         resources = [self._make_resource(["csv"])]
         check_iospec_handshake(spec, resources)  # Should not raise
 

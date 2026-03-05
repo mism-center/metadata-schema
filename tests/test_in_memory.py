@@ -19,9 +19,7 @@ from mism_registry.errors import (
 
 class TestResourceCRUD:
     def test_register_and_get(self, registry: InMemoryRegistry):
-        r = Resource(
-            name="data", resource_type=ResourceType.DATASET, location_uri="s3://x"
-        )
+        r = Resource(name="data", resource_type=ResourceType.DATASET, location_uri="s3://x")
         registered = registry.register_resource(r)
         assert registered.id == r.id
         retrieved = registry.get_resource(r.id)
@@ -32,26 +30,20 @@ class TestResourceCRUD:
             registry.get_resource("nonexistent-id")
 
     def test_duplicate_registration_raises(self, registry: InMemoryRegistry):
-        r = Resource(
-            name="data", resource_type=ResourceType.DATASET, location_uri="s3://x"
-        )
+        r = Resource(name="data", resource_type=ResourceType.DATASET, location_uri="s3://x")
         registry.register_resource(r)
         with pytest.raises(DuplicateResourceError):
             registry.register_resource(r)
 
     def test_returned_is_copy(self, registry: InMemoryRegistry):
-        r = Resource(
-            name="data", resource_type=ResourceType.DATASET, location_uri="s3://x"
-        )
+        r = Resource(name="data", resource_type=ResourceType.DATASET, location_uri="s3://x")
         registered = registry.register_resource(r)
         registered.name = "modified"
         retrieved = registry.get_resource(r.id)
         assert retrieved.name == "data"
 
     def test_update_resource(self, registry: InMemoryRegistry):
-        r = Resource(
-            name="data", resource_type=ResourceType.DATASET, location_uri="s3://x"
-        )
+        r = Resource(name="data", resource_type=ResourceType.DATASET, location_uri="s3://x")
         registry.register_resource(r)
         r.description = "updated"
         registry.update_resource(r)
@@ -93,17 +85,13 @@ class TestFindResources:
 
     def test_find_by_tags(self, registry: InMemoryRegistry):
         self._register(registry, name="d1", format_tags=["csv", "timeseries"])
-        self._register(
-            registry, name="d2", format_tags=["fasta"], location_uri="s3://y"
-        )
+        self._register(registry, name="d2", format_tags=["fasta"], location_uri="s3://y")
         results = registry.find_resources(tags=["csv"])
         assert len(results) == 1
         assert results[0].name == "d1"
 
     def test_find_by_tags_subset(self, registry: InMemoryRegistry):
-        self._register(
-            registry, name="d1", format_tags=["csv", "timeseries", "extra"]
-        )
+        self._register(registry, name="d1", format_tags=["csv", "timeseries", "extra"])
         results = registry.find_resources(tags=["csv", "timeseries"])
         assert len(results) == 1
 
@@ -123,18 +111,14 @@ class TestFindResources:
 
     def test_find_by_organisms(self, registry: InMemoryRegistry):
         self._register(registry, name="d1", organisms=["SARS-CoV-2", "Homo sapiens"])
-        self._register(
-            registry, name="d2", organisms=["HIV-1"], location_uri="s3://y"
-        )
+        self._register(registry, name="d2", organisms=["HIV-1"], location_uri="s3://y")
         results = registry.find_resources(organisms=["SARS-CoV-2"])
         assert len(results) == 1
         assert results[0].name == "d1"
 
     def test_find_by_scales(self, registry: InMemoryRegistry):
         self._register(registry, name="d1", modeling_scales=["molecular", "cellular"])
-        self._register(
-            registry, name="d2", modeling_scales=["population"], location_uri="s3://y"
-        )
+        self._register(registry, name="d2", modeling_scales=["population"], location_uri="s3://y")
         results = registry.find_resources(scales=["molecular"])
         assert len(results) == 1
         assert results[0].name == "d1"
@@ -263,9 +247,7 @@ class TestLineage:
 
 class TestVersionMethods:
     def test_get_latest_version_single(self, registry: InMemoryRegistry):
-        r = Resource(
-            name="data", resource_type=ResourceType.DATASET, location_uri="s3://x"
-        )
+        r = Resource(name="data", resource_type=ResourceType.DATASET, location_uri="s3://x")
         registry.register_resource(r)
         latest = registry.get_latest_version(r.id)
         assert latest is not None
@@ -295,9 +277,7 @@ class TestVersionMethods:
         assert registry.get_latest_version("nonexistent") is None
 
     def test_get_version_history_single(self, registry: InMemoryRegistry):
-        r = Resource(
-            name="data", resource_type=ResourceType.DATASET, location_uri="s3://x"
-        )
+        r = Resource(name="data", resource_type=ResourceType.DATASET, location_uri="s3://x")
         registry.register_resource(r)
         history = registry.get_version_history(r.id)
         assert len(history) == 1

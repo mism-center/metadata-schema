@@ -58,9 +58,7 @@ class InMemoryRegistry:
             results = [r for r in results if needle in r.name.lower()]
         if organisms is not None:
             org_set = {o.lower() for o in organisms}
-            results = [
-                r for r in results if org_set.issubset({o.lower() for o in r.organisms})
-            ]
+            results = [r for r in results if org_set.issubset({o.lower() for o in r.organisms})]
         if scales is not None:
             scale_set = {s.lower() for s in scales}
             results = [
@@ -115,17 +113,13 @@ class InMemoryRegistry:
     def get_lineage(self, resource_id: str) -> list[Run]:
         """Find runs that produced this resource (it appears in output_resource_ids)."""
         return [
-            copy.deepcopy(r)
-            for r in self._runs.values()
-            if resource_id in r.output_resource_ids
+            copy.deepcopy(r) for r in self._runs.values() if resource_id in r.output_resource_ids
         ]
 
     def get_dependents(self, resource_id: str) -> list[Run]:
         """Find runs that consumed this resource (it appears in input_resource_ids)."""
         return [
-            copy.deepcopy(r)
-            for r in self._runs.values()
-            if resource_id in r.input_resource_ids
+            copy.deepcopy(r) for r in self._runs.values() if resource_id in r.input_resource_ids
         ]
 
     # ── Version methods ───────────────────────────────────────────────

@@ -169,9 +169,7 @@ class TestCreateNewVersion:
             description="Original desc",
             metadata={"key": "value"},
         )
-        new = create_new_version(
-            registry, original_id=original.id, location_uri="s3://v2"
-        )
+        new = create_new_version(registry, original_id=original.id, location_uri="s3://v2")
         assert new.description == "Original desc"
         assert new.metadata["key"] == "value"
 
@@ -199,9 +197,7 @@ class TestCreateNewVersion:
 
     def test_nonexistent_original_raises(self, registry: InMemoryRegistry):
         with pytest.raises(ResourceNotFoundError):
-            create_new_version(
-                registry, original_id="nonexistent", location_uri="s3://v2"
-            )
+            create_new_version(registry, original_id="nonexistent", location_uri="s3://v2")
 
 
 class TestGetLatestVersion:
@@ -213,9 +209,7 @@ class TestGetLatestVersion:
 
     def test_version_chain(self, registry: InMemoryRegistry):
         v1 = register_dataset(registry, name="D", location_uri="s3://v1")
-        v2 = create_new_version(
-            registry, original_id=v1.id, location_uri="s3://v2"
-        )
+        v2 = create_new_version(registry, original_id=v1.id, location_uri="s3://v2")
         latest = get_latest_version(registry, v1.id)
         assert latest is not None
         assert latest.id == v2.id
@@ -233,12 +227,8 @@ class TestGetVersionHistory:
 
     def test_version_chain(self, registry: InMemoryRegistry):
         v1 = register_dataset(registry, name="D", location_uri="s3://v1")
-        v2 = create_new_version(
-            registry, original_id=v1.id, location_uri="s3://v2"
-        )
-        v3 = create_new_version(
-            registry, original_id=v2.id, location_uri="s3://v3"
-        )
+        v2 = create_new_version(registry, original_id=v1.id, location_uri="s3://v2")
+        v3 = create_new_version(registry, original_id=v2.id, location_uri="s3://v3")
         # Query from any point in the chain
         for rid in [v1.id, v2.id, v3.id]:
             history = get_version_history(registry, rid)
@@ -252,9 +242,7 @@ class TestGetVersionHistory:
 
 
 class TestPrepareRun:
-    def test_happy_path(
-        self, registry: InMemoryRegistry, sample_dataset, sample_model
-    ):
+    def test_happy_path(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         run = prepare_run(
             registry,
             model_id=sample_model.id,
@@ -285,9 +273,7 @@ class TestPrepareRun:
                 input_resource_ids=["nonexistent"],
             )
 
-    def test_dataset_as_model_rejected(
-        self, registry: InMemoryRegistry, sample_dataset
-    ):
+    def test_dataset_as_model_rejected(self, registry: InMemoryRegistry, sample_dataset):
         with pytest.raises(ValidationError, match="not a model"):
             prepare_run(
                 registry,
@@ -339,12 +325,8 @@ class TestPrepareRun:
             io_spec=IOSpec(),
         )
         # Create a new version to supersede the original
-        create_new_version(
-            registry, original_id=model.id, location_uri="docker://img:v2"
-        )
-        dataset = register_dataset(
-            registry, name="Data", location_uri="s3://d"
-        )
+        create_new_version(registry, original_id=model.id, location_uri="docker://img:v2")
+        dataset = register_dataset(registry, name="Data", location_uri="s3://d")
         with pytest.raises(ValidationError, match="active"):
             prepare_run(
                 registry,
@@ -353,12 +335,8 @@ class TestPrepareRun:
             )
 
     def test_superseded_input_rejected(self, registry: InMemoryRegistry):
-        dataset = register_dataset(
-            registry, name="Data", location_uri="s3://v1"
-        )
-        create_new_version(
-            registry, original_id=dataset.id, location_uri="s3://v2"
-        )
+        dataset = register_dataset(registry, name="Data", location_uri="s3://v1")
+        create_new_version(registry, original_id=dataset.id, location_uri="s3://v2")
         model = register_model(
             registry,
             name="Model",
@@ -375,9 +353,7 @@ class TestPrepareRun:
 
 
 class TestStartRun:
-    def test_happy_path(
-        self, registry: InMemoryRegistry, sample_dataset, sample_model
-    ):
+    def test_happy_path(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         run = prepare_run(
             registry,
             model_id=sample_model.id,
@@ -389,9 +365,7 @@ class TestStartRun:
 
 
 class TestCompleteRun:
-    def test_happy_path(
-        self, registry: InMemoryRegistry, sample_dataset, sample_model
-    ):
+    def test_happy_path(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         run = prepare_run(
             registry,
             model_id=sample_model.id,
@@ -404,9 +378,7 @@ class TestCompleteRun:
             location_uri="s3://results/output.json",
             format_tags=["json"],
         )
-        completed = complete_run(
-            registry, run_id=run.id, output_resources=[output]
-        )
+        completed = complete_run(registry, run_id=run.id, output_resources=[output])
         assert completed.status == RunStatus.COMPLETED
         assert len(completed.output_resource_ids) == 1
         assert completed.completed_at is not None
@@ -424,9 +396,7 @@ class TestCompleteRun:
 
 
 class TestFailRun:
-    def test_happy_path(
-        self, registry: InMemoryRegistry, sample_dataset, sample_model
-    ):
+    def test_happy_path(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         run = prepare_run(
             registry,
             model_id=sample_model.id,
@@ -446,9 +416,7 @@ class TestFailRun:
 
 
 class TestCancelRun:
-    def test_from_registered(
-        self, registry: InMemoryRegistry, sample_dataset, sample_model
-    ):
+    def test_from_registered(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         run = prepare_run(
             registry,
             model_id=sample_model.id,
@@ -457,9 +425,7 @@ class TestCancelRun:
         cancelled = cancel_run(registry, run_id=run.id)
         assert cancelled.status == RunStatus.CANCELLED
 
-    def test_from_running(
-        self, registry: InMemoryRegistry, sample_dataset, sample_model
-    ):
+    def test_from_running(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         run = prepare_run(
             registry,
             model_id=sample_model.id,
@@ -469,9 +435,7 @@ class TestCancelRun:
         cancelled = cancel_run(registry, run_id=run.id)
         assert cancelled.status == RunStatus.CANCELLED
 
-    def test_from_completed_raises(
-        self, registry: InMemoryRegistry, sample_dataset, sample_model
-    ):
+    def test_from_completed_raises(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         run = prepare_run(
             registry,
             model_id=sample_model.id,
@@ -486,15 +450,11 @@ class TestCancelRun:
 class TestDiscovery:
     def test_find_resources_delegates(self, registry: InMemoryRegistry):
         register_dataset(registry, name="d1", location_uri="s3://a")
-        register_dataset(
-            registry, name="d2", location_uri="s3://b", format_tags=["csv"]
-        )
+        register_dataset(registry, name="d2", location_uri="s3://b", format_tags=["csv"])
         results = find_resources(registry, tags=["csv"])
         assert len(results) == 1
 
-    def test_find_runs_delegates(
-        self, registry: InMemoryRegistry, sample_dataset, sample_model
-    ):
+    def test_find_runs_delegates(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         prepare_run(
             registry,
             model_id=sample_model.id,
@@ -503,9 +463,7 @@ class TestDiscovery:
         results = find_runs(registry, model_id=sample_model.id)
         assert len(results) == 1
 
-    def test_get_lineage_delegates(
-        self, registry: InMemoryRegistry, sample_dataset, sample_model
-    ):
+    def test_get_lineage_delegates(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         run = prepare_run(
             registry,
             model_id=sample_model.id,
@@ -517,9 +475,7 @@ class TestDiscovery:
             resource_type=ResourceType.DATASET,
             location_uri="s3://out",
         )
-        completed = complete_run(
-            registry, run_id=run.id, output_resources=[output]
-        )
+        completed = complete_run(registry, run_id=run.id, output_resources=[output])
         lineage = get_lineage(registry, completed.output_resource_ids[0])
         assert len(lineage) == 1
 

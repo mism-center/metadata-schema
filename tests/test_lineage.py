@@ -19,10 +19,14 @@ from mism_registry import (
 
 def _make_model(registry, name="model", input_tags=(), output_tags=()):
     """Helper: register a model with optional IOSpec."""
-    io_spec = IOSpec(
-        inputs=tuple(IOSlot(name=f"in_{i}", tags=t) for i, t in enumerate(input_tags)),
-        outputs=tuple(IOSlot(name=f"out_{i}", tags=t) for i, t in enumerate(output_tags)),
-    ) if input_tags or output_tags else IOSpec()
+    io_spec = (
+        IOSpec(
+            inputs=tuple(IOSlot(name=f"in_{i}", tags=t) for i, t in enumerate(input_tags)),
+            outputs=tuple(IOSlot(name=f"out_{i}", tags=t) for i, t in enumerate(output_tags)),
+        )
+        if input_tags or output_tags
+        else IOSpec()
+    )
     return register_model(
         registry,
         name=name,
@@ -39,9 +43,7 @@ class TestLinearPipeline:
         reg = InMemoryRegistry()
 
         # Register initial dataset
-        d1 = register_dataset(
-            reg, name="D1", location_uri="s3://d1", format_tags=["fasta"]
-        )
+        d1 = register_dataset(reg, name="D1", location_uri="s3://d1", format_tags=["fasta"])
 
         # Register models
         m1 = _make_model(reg, "M1", input_tags=[("fasta",)], output_tags=[("csv",)])
@@ -103,9 +105,7 @@ class TestDiamondPattern:
 
     def test_shared_input(self):
         reg = InMemoryRegistry()
-        d1 = register_dataset(
-            reg, name="D1", location_uri="s3://d1", format_tags=["csv"]
-        )
+        d1 = register_dataset(reg, name="D1", location_uri="s3://d1", format_tags=["csv"])
         m1 = _make_model(reg, "M1")
         m2 = _make_model(reg, "M2")
 
@@ -123,19 +123,14 @@ class TestMultipleInputs:
 
     def test_multi_input_run(self):
         reg = InMemoryRegistry()
-        d1 = register_dataset(
-            reg, name="D1", location_uri="s3://d1", format_tags=["fasta"]
-        )
-        d2 = register_dataset(
-            reg, name="D2", location_uri="s3://d2", format_tags=["pdb"]
-        )
+        d1 = register_dataset(reg, name="D1", location_uri="s3://d1", format_tags=["fasta"])
+        d2 = register_dataset(reg, name="D2", location_uri="s3://d2", format_tags=["pdb"])
         m = _make_model(
-            reg, "Multi-Input Model",
+            reg,
+            "Multi-Input Model",
             input_tags=[("fasta",), ("pdb",)],
         )
-        run = prepare_run(
-            reg, model_id=m.id, input_resource_ids=[d1.id, d2.id]
-        )
+        run = prepare_run(reg, model_id=m.id, input_resource_ids=[d1.id, d2.id])
         assert len(run.input_resource_ids) == 2
 
         # Both D1 and D2 are dependencies of this run
@@ -151,9 +146,7 @@ class TestMultipleOutputs:
 
     def test_multi_output_run(self):
         reg = InMemoryRegistry()
-        d1 = register_dataset(
-            reg, name="D1", location_uri="s3://d1", format_tags=["csv"]
-        )
+        d1 = register_dataset(reg, name="D1", location_uri="s3://d1", format_tags=["csv"])
         m = _make_model(reg, "Multi-Output Model")
 
         run = prepare_run(reg, model_id=m.id, input_resource_ids=[d1.id])
@@ -169,9 +162,7 @@ class TestMultipleOutputs:
             resource_type=ResourceType.DATASET,
             location_uri="s3://out2",
         )
-        completed = complete_run(
-            reg, run_id=run.id, output_resources=[out1, out2]
-        )
+        completed = complete_run(reg, run_id=run.id, output_resources=[out1, out2])
         assert len(completed.output_resource_ids) == 2
 
         # Both outputs trace back to the same run

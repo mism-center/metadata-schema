@@ -32,21 +32,11 @@ class TestPublicAPI:
         assert mism_registry.Run is not None
 
     def test_all_errors_importable(self):
-        assert issubclass(
-            mism_registry.ResourceNotFoundError, mism_registry.MismRegistryError
-        )
-        assert issubclass(
-            mism_registry.RunNotFoundError, mism_registry.MismRegistryError
-        )
-        assert issubclass(
-            mism_registry.ValidationError, mism_registry.MismRegistryError
-        )
-        assert issubclass(
-            mism_registry.DuplicateResourceError, mism_registry.MismRegistryError
-        )
-        assert issubclass(
-            mism_registry.IOSpecMismatchError, mism_registry.MismRegistryError
-        )
+        assert issubclass(mism_registry.ResourceNotFoundError, mism_registry.MismRegistryError)
+        assert issubclass(mism_registry.RunNotFoundError, mism_registry.MismRegistryError)
+        assert issubclass(mism_registry.ValidationError, mism_registry.MismRegistryError)
+        assert issubclass(mism_registry.DuplicateResourceError, mism_registry.MismRegistryError)
+        assert issubclass(mism_registry.IOSpecMismatchError, mism_registry.MismRegistryError)
         assert issubclass(
             mism_registry.InvalidStateTransitionError, mism_registry.MismRegistryError
         )
