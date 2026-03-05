@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import warnings
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
-from .enums import ExecutionType, ResourceType, RunStatus
+from .enums import ExecutionType, ResourceStatus, ResourceType, RunStatus
 from .errors import ValidationError
 from .protocol import Registry
 from .resource import Resource
 from .run import Run
-from .types import IOSpec, RunEnvironment
+from .types import Author, IOSpec, Publication, RunEnvironment
 from .validation import (
     check_iospec_handshake,
     validate_execution_fields,
+    validate_resource_is_active,
     validate_resource_required_fields,
     validate_run_status_transition,
 )
@@ -36,6 +37,17 @@ def register_dataset(
     license: str = "",
     owner: str = "",
     metadata: dict[str, Any] | None = None,
+    # Authorship & attribution
+    authors: list[Author] | None = None,
+    organization: str = "",
+    contact_email: str = "",
+    publications: list[Publication] | None = None,
+    funding: list[str] | None = None,
+    # Scientific context
+    modeling_scales: list[str] | None = None,
+    organisms: list[str] | None = None,
+    domains: list[str] | None = None,
+    date_published: date | None = None,
 ) -> Resource:
     """Register a dataset resource."""
     resource = Resource(
@@ -51,6 +63,15 @@ def register_dataset(
         license=license,
         owner=owner,
         metadata=metadata or {},
+        authors=authors or [],
+        organization=organization,
+        contact_email=contact_email,
+        publications=publications or [],
+        funding=funding or [],
+        modeling_scales=modeling_scales or [],
+        organisms=organisms or [],
+        domains=domains or [],
+        date_published=date_published,
     )
     validate_resource_required_fields(resource)
     return registry.register_resource(resource)
@@ -74,6 +95,17 @@ def register_model(
     owner: str = "",
     metadata: dict[str, Any] | None = None,
     resource_type: ResourceType = ResourceType.MODEL,
+    # Authorship & attribution
+    authors: list[Author] | None = None,
+    organization: str = "",
+    contact_email: str = "",
+    publications: list[Publication] | None = None,
+    funding: list[str] | None = None,
+    # Scientific context
+    modeling_scales: list[str] | None = None,
+    organisms: list[str] | None = None,
+    domains: list[str] | None = None,
+    date_published: date | None = None,
 ) -> Resource:
     """Register a model or tool resource."""
     if resource_type not in (ResourceType.MODEL, ResourceType.TOOL):
@@ -94,10 +126,85 @@ def register_model(
         license=license,
         owner=owner,
         metadata=metadata or {},
+        authors=authors or [],
+        organization=organization,
+        contact_email=contact_email,
+        publications=publications or [],
+        funding=funding or [],
+        modeling_scales=modeling_scales or [],
+        organisms=organisms or [],
+        domains=domains or [],
+        date_published=date_published,
     )
     validate_resource_required_fields(resource)
     validate_execution_fields(resource)
     return registry.register_resource(resource)
+
+
+# ── Versioning ────────────────────────────────────────────────────────
+
+
+def create_new_version(
+    registry: Registry,
+    *,
+    original_id: str,
+    location_uri: str,
+    version: str = "",
+    digest_sha256: str = "",
+    size_bytes: int | None = None,
+    description: str | None = None,
+    format_tags: list[str] | None = None,
+    io_spec: IOSpec | None = None,
+    metadata: dict[str, Any] | None = None,
+    owner: str = "",
+) -> Resource:
+    """Create a new version of an existing resource.
+
+    The original is marked as superseded. The new resource gets a new UUID
+    and a new_version_of pointer back to the original.
+    """
+    original = registry.get_resource(original_id)
+    validate_resource_is_active(original)
+
+    new_resource = Resource(
+        name=original.name,
+        resource_type=original.resource_type,
+        location_uri=location_uri,
+        description=description if description is not None else original.description,
+        version=version or original.version,
+        format_tags=format_tags if format_tags is not None else list(original.format_tags),
+        digest_sha256=digest_sha256,
+        size_bytes=size_bytes,
+        execution_type=original.execution_type,
+        execution_ref=original.execution_ref,
+        io_spec=io_spec if io_spec is not None else original.io_spec,
+        external_ids=dict(original.external_ids),
+        license=original.license,
+        owner=owner or original.owner,
+        metadata=metadata if metadata is not None else dict(original.metadata),
+        new_version_of=original.id,
+        # Carry forward authorship and scientific context
+        authors=list(original.authors),
+        organization=original.organization,
+        contact_email=original.contact_email,
+        publications=list(original.publications),
+        funding=list(original.funding),
+        modeling_scales=list(original.modeling_scales),
+        organisms=list(original.organisms),
+        domains=list(original.domains),
+        date_published=original.date_published,
+    )
+    validate_resource_required_fields(new_resource)
+
+    registered = registry.register_resource(new_resource)
+
+    # Mark original as superseded
+    original.status = ResourceStatus.SUPERSEDED
+    original.superseded_by = registered.id
+    original.updated_at = datetime.now(timezone.utc)
+    registry.update_resource(original)
+
+    return registered
 
 
 # ── Execution tracking ────────────────────────────────────────────────
@@ -115,17 +222,21 @@ def prepare_run(
 ) -> Run:
     """Create a Run in REGISTERED status.
 
-    Validates model exists, inputs exist, and performs IOSpec handshake if available.
+    Validates model exists and is active, inputs exist and are active,
+    and performs IOSpec handshake if available.
     """
     model = registry.get_resource(model_id)
     if model.resource_type not in (ResourceType.MODEL, ResourceType.TOOL):
         raise ValidationError(
             f"Resource '{model_id}' is a {model.resource_type.value}, not a model or tool"
         )
+    validate_resource_is_active(model)
 
     input_resources = []
     for rid in input_resource_ids:
-        input_resources.append(registry.get_resource(rid))
+        r = registry.get_resource(rid)
+        validate_resource_is_active(r)
+        input_resources.append(r)
 
     if model.io_spec is not None:
         check_iospec_handshake(model.io_spec, input_resources)
@@ -224,13 +335,17 @@ def find_resources(
     tags: list[str] | None = None,
     owner: str | None = None,
     name_contains: str | None = None,
+    organisms: list[str] | None = None,
+    scales: list[str] | None = None,
 ) -> list[Resource]:
-    """Search resources by type, tags, owner, or name substring."""
+    """Search resources by type, tags, owner, name substring, organisms, or scales."""
     return registry.find_resources(
         resource_type=resource_type,
         tags=tags,
         owner=owner,
         name_contains=name_contains,
+        organisms=organisms,
+        scales=scales,
     )
 
 
@@ -257,3 +372,13 @@ def get_lineage(registry: Registry, resource_id: str) -> list[Run]:
 def get_dependents(registry: Registry, resource_id: str) -> list[Run]:
     """Trace forwards: what runs used this resource as input?"""
     return registry.get_dependents(resource_id)
+
+
+def get_latest_version(registry: Registry, resource_id: str) -> Resource | None:
+    """Follow the version chain forward to the current active version."""
+    return registry.get_latest_version(resource_id)
+
+
+def get_version_history(registry: Registry, resource_id: str) -> list[Resource]:
+    """Return the full version chain for a resource, oldest first."""
+    return registry.get_version_history(resource_id)

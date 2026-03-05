@@ -42,6 +42,8 @@ class InMemoryRegistry:
         tags: list[str] | None = None,
         owner: str | None = None,
         name_contains: str | None = None,
+        organisms: list[str] | None = None,
+        scales: list[str] | None = None,
     ) -> list[Resource]:
         results = list(self._resources.values())
         if resource_type is not None:
@@ -54,6 +56,16 @@ class InMemoryRegistry:
         if name_contains is not None:
             needle = name_contains.lower()
             results = [r for r in results if needle in r.name.lower()]
+        if organisms is not None:
+            org_set = {o.lower() for o in organisms}
+            results = [
+                r for r in results if org_set.issubset({o.lower() for o in r.organisms})
+            ]
+        if scales is not None:
+            scale_set = {s.lower() for s in scales}
+            results = [
+                r for r in results if scale_set.issubset({s.lower() for s in r.modeling_scales})
+            ]
         return [copy.deepcopy(r) for r in results]
 
     def update_resource(self, resource: Resource) -> Resource:
@@ -115,3 +127,38 @@ class InMemoryRegistry:
             for r in self._runs.values()
             if resource_id in r.input_resource_ids
         ]
+
+    # ── Version methods ───────────────────────────────────────────────
+
+    def get_latest_version(self, resource_id: str) -> Resource | None:
+        """Follow the version chain forward to the current active version."""
+        if resource_id not in self._resources:
+            return None
+        current = self._resources[resource_id]
+        while current.superseded_by:
+            next_id = current.superseded_by
+            if next_id not in self._resources:
+                break
+            current = self._resources[next_id]
+        return copy.deepcopy(current)
+
+    def get_version_history(self, resource_id: str) -> list[Resource]:
+        """Return the full version chain for a resource, oldest first."""
+        if resource_id not in self._resources:
+            return []
+        # Walk backwards to find the earliest version
+        current = self._resources[resource_id]
+        while current.new_version_of:
+            prev_id = current.new_version_of
+            if prev_id not in self._resources:
+                break
+            current = self._resources[prev_id]
+        # Walk forwards collecting all versions
+        chain: list[Resource] = [copy.deepcopy(current)]
+        while current.superseded_by:
+            next_id = current.superseded_by
+            if next_id not in self._resources:
+                break
+            current = self._resources[next_id]
+            chain.append(copy.deepcopy(current))
+        return chain

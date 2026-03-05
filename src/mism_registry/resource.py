@@ -4,44 +4,56 @@ from __future__ import annotations
 
 import dataclasses
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
-from .enums import ExecutionType, ResourceType
-from .types import IOSpec
+from .enums import ExecutionType, ResourceStatus, ResourceType
+from .types import Author, IOSpec, Publication
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)
 class Resource:
     """A registered dataset, model, or tool."""
 
-    # Identity
+    # Identity & description
     id: str = dataclasses.field(default_factory=lambda: str(uuid.uuid4()))
-
-    # Required fields
     name: str
     resource_type: ResourceType
     location_uri: str
-
-    # Optional descriptive fields
     description: str = ""
     version: str = ""
+    status: ResourceStatus = ResourceStatus.ACTIVE
+    new_version_of: str = ""
+    superseded_by: str = ""
+
+    # Authorship & attribution
+    authors: list[Author] = dataclasses.field(default_factory=list)
+    organization: str = ""
+    contact_email: str = ""
+    publications: list[Publication] = dataclasses.field(default_factory=list)
+    funding: list[str] = dataclasses.field(default_factory=list)
+
+    # Scientific context
+    modeling_scales: list[str] = dataclasses.field(default_factory=list)
+    organisms: list[str] = dataclasses.field(default_factory=list)
+    domains: list[str] = dataclasses.field(default_factory=list)
+    date_published: date | None = None
+
+    # Location & integrity
     format_tags: list[str] = dataclasses.field(default_factory=list)
     digest_sha256: str = ""
     size_bytes: int | None = None
+    external_ids: dict[str, str] = dataclasses.field(default_factory=dict)
+    license: str = ""
 
     # Execution-related (conditional: required for model/tool)
     execution_type: ExecutionType | None = None
     execution_ref: str = ""
     io_spec: IOSpec | None = None
 
-    # Extensibility
-    external_ids: dict[str, str] = dataclasses.field(default_factory=dict)
-    license: str = ""
+    # System
     owner: str = ""
     metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
-
-    # Timestamps (auto-managed)
     created_at: datetime = dataclasses.field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = dataclasses.field(default_factory=lambda: datetime.now(timezone.utc))
 

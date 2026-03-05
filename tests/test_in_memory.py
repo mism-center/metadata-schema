@@ -5,6 +5,7 @@ import pytest
 from mism_registry import (
     InMemoryRegistry,
     Resource,
+    ResourceStatus,
     ResourceType,
     Run,
     RunStatus,
@@ -119,6 +120,24 @@ class TestFindResources:
         results = registry.find_resources(name_contains="spike")
         assert len(results) == 1
         assert "Spike" in results[0].name
+
+    def test_find_by_organisms(self, registry: InMemoryRegistry):
+        self._register(registry, name="d1", organisms=["SARS-CoV-2", "Homo sapiens"])
+        self._register(
+            registry, name="d2", organisms=["HIV-1"], location_uri="s3://y"
+        )
+        results = registry.find_resources(organisms=["SARS-CoV-2"])
+        assert len(results) == 1
+        assert results[0].name == "d1"
+
+    def test_find_by_scales(self, registry: InMemoryRegistry):
+        self._register(registry, name="d1", modeling_scales=["molecular", "cellular"])
+        self._register(
+            registry, name="d2", modeling_scales=["population"], location_uri="s3://y"
+        )
+        results = registry.find_resources(scales=["molecular"])
+        assert len(results) == 1
+        assert results[0].name == "d1"
 
     def test_find_combined_filters(self, registry: InMemoryRegistry):
         self._register(
@@ -240,3 +259,83 @@ class TestLineage:
 
     def test_no_dependents(self, registry: InMemoryRegistry):
         assert registry.get_dependents("nonexistent") == []
+
+
+class TestVersionMethods:
+    def test_get_latest_version_single(self, registry: InMemoryRegistry):
+        r = Resource(
+            name="data", resource_type=ResourceType.DATASET, location_uri="s3://x"
+        )
+        registry.register_resource(r)
+        latest = registry.get_latest_version(r.id)
+        assert latest is not None
+        assert latest.id == r.id
+
+    def test_get_latest_version_chain(self, registry: InMemoryRegistry):
+        v1 = Resource(
+            name="data",
+            resource_type=ResourceType.DATASET,
+            location_uri="s3://v1",
+            status=ResourceStatus.SUPERSEDED,
+        )
+        v2 = Resource(
+            name="data",
+            resource_type=ResourceType.DATASET,
+            location_uri="s3://v2",
+            new_version_of=v1.id,
+        )
+        v1.superseded_by = v2.id
+        registry.register_resource(v1)
+        registry.register_resource(v2)
+        latest = registry.get_latest_version(v1.id)
+        assert latest is not None
+        assert latest.id == v2.id
+
+    def test_get_latest_version_nonexistent(self, registry: InMemoryRegistry):
+        assert registry.get_latest_version("nonexistent") is None
+
+    def test_get_version_history_single(self, registry: InMemoryRegistry):
+        r = Resource(
+            name="data", resource_type=ResourceType.DATASET, location_uri="s3://x"
+        )
+        registry.register_resource(r)
+        history = registry.get_version_history(r.id)
+        assert len(history) == 1
+        assert history[0].id == r.id
+
+    def test_get_version_history_chain(self, registry: InMemoryRegistry):
+        v1 = Resource(
+            name="data",
+            resource_type=ResourceType.DATASET,
+            location_uri="s3://v1",
+            status=ResourceStatus.SUPERSEDED,
+        )
+        v2 = Resource(
+            name="data",
+            resource_type=ResourceType.DATASET,
+            location_uri="s3://v2",
+            new_version_of=v1.id,
+            status=ResourceStatus.SUPERSEDED,
+        )
+        v3 = Resource(
+            name="data",
+            resource_type=ResourceType.DATASET,
+            location_uri="s3://v3",
+            new_version_of=v2.id,
+        )
+        v1.superseded_by = v2.id
+        v2.superseded_by = v3.id
+        registry.register_resource(v1)
+        registry.register_resource(v2)
+        registry.register_resource(v3)
+
+        # Can query from any point in the chain
+        for rid in [v1.id, v2.id, v3.id]:
+            history = registry.get_version_history(rid)
+            assert len(history) == 3
+            assert history[0].id == v1.id
+            assert history[1].id == v2.id
+            assert history[2].id == v3.id
+
+    def test_get_version_history_nonexistent(self, registry: InMemoryRegistry):
+        assert registry.get_version_history("nonexistent") == []

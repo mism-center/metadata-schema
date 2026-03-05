@@ -1,10 +1,69 @@
-"""Tests for IOSlot, IOSpec, RunEnvironment."""
+"""Tests for Author, Publication, IOSlot, IOSpec, RunEnvironment."""
 
 import dataclasses
 
 import pytest
 
 from mism_registry import IOSlot, IOSpec, RunEnvironment
+from mism_registry.types import Author, Publication
+
+
+class TestAuthor:
+    def test_creation(self):
+        a = Author(name="Alice Smith", orcid="0000-0002-1234-5678", affiliation="NIAID")
+        assert a.name == "Alice Smith"
+        assert a.orcid == "0000-0002-1234-5678"
+        assert a.affiliation == "NIAID"
+        assert a.role == ""
+
+    def test_empty_name_raises(self):
+        with pytest.raises(ValueError, match="non-empty"):
+            Author(name="")
+
+    def test_whitespace_name_raises(self):
+        with pytest.raises(ValueError, match="non-empty"):
+            Author(name="   ")
+
+    def test_frozen(self):
+        a = Author(name="Bob")
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            a.name = "Other"  # type: ignore[misc]
+
+    def test_defaults(self):
+        a = Author(name="Charlie")
+        assert a.orcid == ""
+        assert a.affiliation == ""
+        assert a.role == ""
+
+    def test_with_role(self):
+        a = Author(name="Dev", role="developer")
+        assert a.role == "developer"
+
+
+class TestPublication:
+    def test_creation(self):
+        p = Publication(title="My Paper", doi="10.1234/test")
+        assert p.title == "My Paper"
+        assert p.doi == "10.1234/test"
+        assert p.url == ""
+        assert p.citation == ""
+
+    def test_empty_title_raises(self):
+        with pytest.raises(ValueError, match="non-empty"):
+            Publication(title="")
+
+    def test_whitespace_title_raises(self):
+        with pytest.raises(ValueError, match="non-empty"):
+            Publication(title="   ")
+
+    def test_frozen(self):
+        p = Publication(title="Paper")
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            p.title = "Other"  # type: ignore[misc]
+
+    def test_with_url(self):
+        p = Publication(title="Preprint", url="https://arxiv.org/abs/1234")
+        assert p.url == "https://arxiv.org/abs/1234"
 
 
 class TestIOSlot:

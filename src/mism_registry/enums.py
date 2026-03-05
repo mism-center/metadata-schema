@@ -1,4 +1,4 @@
-"""Enumerations for resource types, execution types, and run statuses."""
+"""Enumerations for resource types, execution types, resource statuses, and run statuses."""
 
 from enum import Enum
 
@@ -10,12 +10,20 @@ class ResourceType(str, Enum):
 
 
 class ExecutionType(str, Enum):
-    DOCKER_IMAGE = "docker_image"
-    PYTHON_PACKAGE = "python_package"
-    CONDA_ENV = "conda_env"
-    SHELL_COMMAND = "shell_command"
+    DOCKER = "docker"
+    CONDA = "conda"
+    PYTHON = "python"
+    R = "r"
+    BINARY = "binary"
+    HUGGINGFACE = "huggingface"
     NOTEBOOK = "notebook"
     OTHER = "other"
+
+
+class ResourceStatus(str, Enum):
+    ACTIVE = "active"
+    SUPERSEDED = "superseded"
+    ARCHIVED = "archived"
 
 
 class RunStatus(str, Enum):

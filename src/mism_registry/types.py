@@ -1,9 +1,37 @@
-"""Value objects: IOSlot, IOSpec, RunEnvironment."""
+"""Value objects: Author, Publication, IOSlot, IOSpec, RunEnvironment."""
 
 from __future__ import annotations
 
 import dataclasses
 from typing import Any
+
+
+@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+class Author:
+    """A creator or contributor of a resource."""
+
+    name: str
+    orcid: str = ""
+    affiliation: str = ""
+    role: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("Author.name must be non-empty")
+
+
+@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+class Publication:
+    """An associated journal paper, preprint, or technical report."""
+
+    title: str
+    doi: str = ""
+    url: str = ""
+    citation: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.title.strip():
+            raise ValueError("Publication.title must be non-empty")
 
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)

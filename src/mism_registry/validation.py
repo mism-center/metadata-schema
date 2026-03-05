@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import warnings
 
-from .enums import ResourceType, RunStatus
+from .enums import ResourceStatus, ResourceType, RunStatus
 from .errors import (
     InvalidStateTransitionError,
     IOSpecMismatchError,
@@ -36,6 +36,14 @@ def validate_execution_fields(resource: Resource) -> None:
                 UserWarning,
                 stacklevel=3,
             )
+
+
+def validate_resource_is_active(resource: Resource) -> None:
+    """Ensure a resource is in ACTIVE status for operations that require it."""
+    if resource.status != ResourceStatus.ACTIVE:
+        raise ValidationError(
+            f"Resource '{resource.id}' has status '{resource.status.value}', expected 'active'"
+        )
 
 
 def normalize_tags(tags: list[str]) -> list[str]:

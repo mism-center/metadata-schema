@@ -8,16 +8,20 @@ from mism_registry import (
     IOSlot,
     IOSpec,
     Resource,
+    ResourceStatus,
     ResourceType,
     RunEnvironment,
     RunStatus,
     cancel_run,
     complete_run,
+    create_new_version,
     fail_run,
     find_resources,
     find_runs,
     get_dependents,
+    get_latest_version,
     get_lineage,
+    get_version_history,
     prepare_run,
     register_dataset,
     register_model,
@@ -87,13 +91,13 @@ class TestRegisterModel:
             registry,
             name="My Model",
             location_uri="docker://img:v1",
-            execution_type=ExecutionType.DOCKER_IMAGE,
+            execution_type=ExecutionType.DOCKER,
             io_spec=IOSpec(
                 inputs=(IOSlot(name="data", tags=("csv",)),),
             ),
         )
         assert r.resource_type == ResourceType.MODEL
-        assert r.execution_type == ExecutionType.DOCKER_IMAGE
+        assert r.execution_type == ExecutionType.DOCKER
         assert r.io_spec is not None
 
     def test_warns_without_iospec(self, registry: InMemoryRegistry):
@@ -102,7 +106,7 @@ class TestRegisterModel:
                 registry,
                 name="Model",
                 location_uri="docker://img",
-                execution_type=ExecutionType.DOCKER_IMAGE,
+                execution_type=ExecutionType.DOCKER,
             )
 
     def test_register_tool(self, registry: InMemoryRegistry):
@@ -110,7 +114,7 @@ class TestRegisterModel:
             registry,
             name="My Tool",
             location_uri="docker://tool:v1",
-            execution_type=ExecutionType.SHELL_COMMAND,
+            execution_type=ExecutionType.BINARY,
             resource_type=ResourceType.TOOL,
             io_spec=IOSpec(),
         )
@@ -125,6 +129,126 @@ class TestRegisterModel:
                 execution_type=ExecutionType.OTHER,
                 resource_type=ResourceType.DATASET,
             )
+
+
+class TestCreateNewVersion:
+    def test_happy_path(self, registry: InMemoryRegistry):
+        original = register_dataset(
+            registry,
+            name="Dataset",
+            location_uri="s3://v1",
+            version="1.0",
+            owner="alice",
+            organisms=["SARS-CoV-2"],
+        )
+        new = create_new_version(
+            registry,
+            original_id=original.id,
+            location_uri="s3://v2",
+            version="2.0",
+        )
+        assert new.name == "Dataset"
+        assert new.location_uri == "s3://v2"
+        assert new.version == "2.0"
+        assert new.new_version_of == original.id
+        assert new.status == ResourceStatus.ACTIVE
+        # Carries forward inherited fields
+        assert new.owner == "alice"
+        assert new.organisms == ["SARS-CoV-2"]
+
+        # Original is now superseded
+        updated_original = registry.get_resource(original.id)
+        assert updated_original.status == ResourceStatus.SUPERSEDED
+        assert updated_original.superseded_by == new.id
+
+    def test_inherits_metadata(self, registry: InMemoryRegistry):
+        original = register_dataset(
+            registry,
+            name="D",
+            location_uri="s3://v1",
+            description="Original desc",
+            metadata={"key": "value"},
+        )
+        new = create_new_version(
+            registry, original_id=original.id, location_uri="s3://v2"
+        )
+        assert new.description == "Original desc"
+        assert new.metadata["key"] == "value"
+
+    def test_override_description(self, registry: InMemoryRegistry):
+        original = register_dataset(
+            registry,
+            name="D",
+            location_uri="s3://v1",
+            description="Old desc",
+        )
+        new = create_new_version(
+            registry,
+            original_id=original.id,
+            location_uri="s3://v2",
+            description="New desc",
+        )
+        assert new.description == "New desc"
+
+    def test_superseded_resource_rejects_version(self, registry: InMemoryRegistry):
+        v1 = register_dataset(registry, name="D", location_uri="s3://v1")
+        create_new_version(registry, original_id=v1.id, location_uri="s3://v2")
+        # v1 is now superseded, so creating another version from it should fail
+        with pytest.raises(ValidationError, match="active"):
+            create_new_version(registry, original_id=v1.id, location_uri="s3://v3")
+
+    def test_nonexistent_original_raises(self, registry: InMemoryRegistry):
+        with pytest.raises(ResourceNotFoundError):
+            create_new_version(
+                registry, original_id="nonexistent", location_uri="s3://v2"
+            )
+
+
+class TestGetLatestVersion:
+    def test_single_version(self, registry: InMemoryRegistry):
+        r = register_dataset(registry, name="D", location_uri="s3://v1")
+        latest = get_latest_version(registry, r.id)
+        assert latest is not None
+        assert latest.id == r.id
+
+    def test_version_chain(self, registry: InMemoryRegistry):
+        v1 = register_dataset(registry, name="D", location_uri="s3://v1")
+        v2 = create_new_version(
+            registry, original_id=v1.id, location_uri="s3://v2"
+        )
+        latest = get_latest_version(registry, v1.id)
+        assert latest is not None
+        assert latest.id == v2.id
+
+    def test_nonexistent(self, registry: InMemoryRegistry):
+        assert get_latest_version(registry, "nonexistent") is None
+
+
+class TestGetVersionHistory:
+    def test_single_version(self, registry: InMemoryRegistry):
+        r = register_dataset(registry, name="D", location_uri="s3://v1")
+        history = get_version_history(registry, r.id)
+        assert len(history) == 1
+        assert history[0].id == r.id
+
+    def test_version_chain(self, registry: InMemoryRegistry):
+        v1 = register_dataset(registry, name="D", location_uri="s3://v1")
+        v2 = create_new_version(
+            registry, original_id=v1.id, location_uri="s3://v2"
+        )
+        v3 = create_new_version(
+            registry, original_id=v2.id, location_uri="s3://v3"
+        )
+        # Query from any point in the chain
+        for rid in [v1.id, v2.id, v3.id]:
+            history = get_version_history(registry, rid)
+            assert len(history) == 3
+            assert history[0].id == v1.id
+            assert history[1].id == v2.id
+            assert history[2].id == v3.id
+
+    def test_nonexistent(self, registry: InMemoryRegistry):
+        assert get_version_history(registry, "nonexistent") == []
 
 
 class TestPrepareRun:
@@ -205,6 +329,49 @@ class TestPrepareRun:
             input_resource_ids=[],
         )
         assert run.status == RunStatus.REGISTERED
+
+    def test_superseded_model_rejected(self, registry: InMemoryRegistry):
+        model = register_model(
+            registry,
+            name="Model",
+            location_uri="docker://img:v1",
+            execution_type=ExecutionType.DOCKER,
+            io_spec=IOSpec(),
+        )
+        # Create a new version to supersede the original
+        create_new_version(
+            registry, original_id=model.id, location_uri="docker://img:v2"
+        )
+        dataset = register_dataset(
+            registry, name="Data", location_uri="s3://d"
+        )
+        with pytest.raises(ValidationError, match="active"):
+            prepare_run(
+                registry,
+                model_id=model.id,
+                input_resource_ids=[dataset.id],
+            )
+
+    def test_superseded_input_rejected(self, registry: InMemoryRegistry):
+        dataset = register_dataset(
+            registry, name="Data", location_uri="s3://v1"
+        )
+        create_new_version(
+            registry, original_id=dataset.id, location_uri="s3://v2"
+        )
+        model = register_model(
+            registry,
+            name="Model",
+            location_uri="docker://img",
+            execution_type=ExecutionType.DOCKER,
+            io_spec=IOSpec(),
+        )
+        with pytest.raises(ValidationError, match="active"):
+            prepare_run(
+                registry,
+                model_id=model.id,
+                input_resource_ids=[dataset.id],
+            )
 
 
 class TestStartRun:

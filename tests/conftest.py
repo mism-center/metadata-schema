@@ -37,7 +37,7 @@ def sample_model(registry: InMemoryRegistry):
         registry,
         name="Test Model",
         location_uri="docker://registry/model:v1",
-        execution_type=ExecutionType.DOCKER_IMAGE,
+        execution_type=ExecutionType.DOCKER,
         version="1.0.0",
         io_spec=IOSpec(
             inputs=(IOSlot(name="input_data", tags=("csv",)),),
@@ -53,5 +53,5 @@ def sample_model_no_iospec(registry: InMemoryRegistry):
         registry,
         name="Simple Model",
         location_uri="git+https://github.com/org/model@v1",
-        execution_type=ExecutionType.PYTHON_PACKAGE,
+        execution_type=ExecutionType.PYTHON,
     )

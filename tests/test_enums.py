@@ -1,6 +1,6 @@
 """Tests for enumerations."""
 
-from mism_registry import ExecutionType, ResourceType, RunStatus
+from mism_registry import ExecutionType, ResourceStatus, ResourceType, RunStatus
 
 
 class TestResourceType:
@@ -24,10 +24,12 @@ class TestResourceType:
 class TestExecutionType:
     def test_members(self):
         expected = {
-            "docker_image",
-            "python_package",
-            "conda_env",
-            "shell_command",
+            "docker",
+            "conda",
+            "python",
+            "r",
+            "binary",
+            "huggingface",
             "notebook",
             "other",
         }
@@ -36,6 +38,19 @@ class TestExecutionType:
     def test_values_are_lowercase(self):
         for member in ExecutionType:
             assert member.value == member.value.lower()
+
+
+class TestResourceStatus:
+    def test_members(self):
+        expected = {"active", "superseded", "archived"}
+        assert {s.value for s in ResourceStatus} == expected
+
+    def test_values_are_lowercase(self):
+        for member in ResourceStatus:
+            assert member.value == member.value.lower()
+
+    def test_is_str_subclass(self):
+        assert isinstance(ResourceStatus.ACTIVE, str)
 
 
 class TestRunStatus:

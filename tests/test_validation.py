@@ -7,6 +7,7 @@ from mism_registry import (
     IOSlot,
     IOSpec,
     Resource,
+    ResourceStatus,
     ResourceType,
     RunStatus,
 )
@@ -19,6 +20,7 @@ from mism_registry.validation import (
     check_iospec_handshake,
     normalize_tags,
     validate_execution_fields,
+    validate_resource_is_active,
     validate_resource_required_fields,
     validate_run_status_transition,
 )
@@ -86,7 +88,7 @@ class TestValidateExecutionFields:
             name="test",
             resource_type=ResourceType.MODEL,
             location_uri="s3://x",
-            execution_type=ExecutionType.DOCKER_IMAGE,
+            execution_type=ExecutionType.DOCKER,
         )
         with pytest.warns(UserWarning, match="no io_spec"):
             validate_execution_fields(r)
@@ -96,11 +98,39 @@ class TestValidateExecutionFields:
             name="test",
             resource_type=ResourceType.MODEL,
             location_uri="s3://x",
-            execution_type=ExecutionType.DOCKER_IMAGE,
+            execution_type=ExecutionType.DOCKER,
             io_spec=IOSpec(),
         )
         # Should not warn
         validate_execution_fields(r)
+
+
+class TestValidateResourceIsActive:
+    def test_active_resource_passes(self):
+        r = Resource(
+            name="test", resource_type=ResourceType.DATASET, location_uri="s3://x"
+        )
+        validate_resource_is_active(r)  # Should not raise
+
+    def test_superseded_resource_raises(self):
+        r = Resource(
+            name="test",
+            resource_type=ResourceType.DATASET,
+            location_uri="s3://x",
+            status=ResourceStatus.SUPERSEDED,
+        )
+        with pytest.raises(ValidationError, match="active"):
+            validate_resource_is_active(r)
+
+    def test_archived_resource_raises(self):
+        r = Resource(
+            name="test",
+            resource_type=ResourceType.DATASET,
+            location_uri="s3://x",
+            status=ResourceStatus.ARCHIVED,
+        )
+        with pytest.raises(ValidationError, match="active"):
+            validate_resource_is_active(r)
 
 
 class TestNormalizeTags:

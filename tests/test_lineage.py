@@ -27,7 +27,7 @@ def _make_model(registry, name="model", input_tags=(), output_tags=()):
         registry,
         name=name,
         location_uri=f"docker://{name}:v1",
-        execution_type=ExecutionType.DOCKER_IMAGE,
+        execution_type=ExecutionType.DOCKER,
         io_spec=io_spec,
     )
 

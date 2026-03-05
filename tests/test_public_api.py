@@ -18,15 +18,35 @@ class TestPublicAPI:
 
     def test_all_enums_importable(self):
         assert mism_registry.ResourceType.DATASET is not None
-        assert mism_registry.ExecutionType.DOCKER_IMAGE is not None
+        assert mism_registry.ExecutionType.DOCKER is not None
+        assert mism_registry.ResourceStatus.ACTIVE is not None
         assert mism_registry.RunStatus.REGISTERED is not None
 
+    def test_all_types_importable(self):
+        assert mism_registry.Author is not None
+        assert mism_registry.Publication is not None
+        assert mism_registry.IOSlot is not None
+        assert mism_registry.IOSpec is not None
+        assert mism_registry.RunEnvironment is not None
+        assert mism_registry.Resource is not None
+        assert mism_registry.Run is not None
+
     def test_all_errors_importable(self):
-        assert issubclass(mism_registry.ResourceNotFoundError, mism_registry.MismRegistryError)
-        assert issubclass(mism_registry.RunNotFoundError, mism_registry.MismRegistryError)
-        assert issubclass(mism_registry.ValidationError, mism_registry.MismRegistryError)
-        assert issubclass(mism_registry.DuplicateResourceError, mism_registry.MismRegistryError)
-        assert issubclass(mism_registry.IOSpecMismatchError, mism_registry.MismRegistryError)
+        assert issubclass(
+            mism_registry.ResourceNotFoundError, mism_registry.MismRegistryError
+        )
+        assert issubclass(
+            mism_registry.RunNotFoundError, mism_registry.MismRegistryError
+        )
+        assert issubclass(
+            mism_registry.ValidationError, mism_registry.MismRegistryError
+        )
+        assert issubclass(
+            mism_registry.DuplicateResourceError, mism_registry.MismRegistryError
+        )
+        assert issubclass(
+            mism_registry.IOSpecMismatchError, mism_registry.MismRegistryError
+        )
         assert issubclass(
             mism_registry.InvalidStateTransitionError, mism_registry.MismRegistryError
         )
@@ -35,6 +55,7 @@ class TestPublicAPI:
         ops = [
             "register_dataset",
             "register_model",
+            "create_new_version",
             "prepare_run",
             "start_run",
             "complete_run",
@@ -44,6 +65,8 @@ class TestPublicAPI:
             "find_runs",
             "get_lineage",
             "get_dependents",
+            "get_latest_version",
+            "get_version_history",
         ]
         for op in ops:
             assert callable(getattr(mism_registry, op)), f"{op} is not callable"

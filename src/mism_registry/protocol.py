@@ -13,7 +13,7 @@ from .run import Run
 class Registry(Protocol):
     """Storage-agnostic interface for the MISM registry.
 
-    Any backend (in-memory, SQLite, PostgreSQL) can implement this protocol.
+    Any backend (in-memory, PostgreSQL) can implement this protocol.
     """
 
     def register_resource(self, resource: Resource) -> Resource: ...
@@ -27,6 +27,8 @@ class Registry(Protocol):
         tags: list[str] | None = None,
         owner: str | None = None,
         name_contains: str | None = None,
+        organisms: list[str] | None = None,
+        scales: list[str] | None = None,
     ) -> list[Resource]: ...
 
     def update_resource(self, resource: Resource) -> Resource: ...
@@ -48,3 +50,7 @@ class Registry(Protocol):
     def get_lineage(self, resource_id: str) -> list[Run]: ...
 
     def get_dependents(self, resource_id: str) -> list[Run]: ...
+
+    def get_latest_version(self, resource_id: str) -> Resource | None: ...
+
+    def get_version_history(self, resource_id: str) -> list[Resource]: ...
