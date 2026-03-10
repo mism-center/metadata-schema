@@ -33,7 +33,6 @@ from sqlalchemy import (
     Text,
     create_engine,
     func,
-    literal,
     select,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -490,7 +489,7 @@ class PostgresRegistry:
         if model_id is not None:
             stmt = stmt.where(RunModel.model_id == model_id)
         if input_resource_id is not None:
-            stmt = stmt.where(literal(input_resource_id) == RunModel.input_resource_ids.any())
+            stmt = stmt.where(RunModel.input_resource_ids.contains([input_resource_id]))
         if status is not None:
             stmt = stmt.where(RunModel.status == status.value)
         results = self._session.execute(stmt).scalars().all()
@@ -499,12 +498,12 @@ class PostgresRegistry:
     # ── Lineage ──────────────────────────────────────────────────────
 
     def get_lineage(self, resource_id: str) -> list[Run]:
-        stmt = select(RunModel).where(literal(resource_id) == RunModel.output_resource_ids.any())
+        stmt = select(RunModel).where(RunModel.output_resource_ids.contains([resource_id]))
         results = self._session.execute(stmt).scalars().all()
         return [run_from_db(m) for m in results]
 
     def get_dependents(self, resource_id: str) -> list[Run]:
-        stmt = select(RunModel).where(literal(resource_id) == RunModel.input_resource_ids.any())
+        stmt = select(RunModel).where(RunModel.input_resource_ids.contains([resource_id]))
         results = self._session.execute(stmt).scalars().all()
         return [run_from_db(m) for m in results]
 
