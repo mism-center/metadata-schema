@@ -33,6 +33,7 @@ from mism_registry import (
     prepare_run,
     start_run,
     complete_run,
+    cancel_run,
     get_lineage,
     get_dependents,
 )
@@ -121,6 +122,14 @@ from mism_registry import fail_run
 
 run = fail_run(registry, run_id=run.id, error_message="OOM on node 3")
 ```
+
+To cancel a run before or during execution:
+
+```python
+run = cancel_run(registry, run_id=run.id)
+```
+
+Runs can be cancelled from `REGISTERED` or `RUNNING` state. Completed and failed runs are terminal.
 
 ### Versioning
 
@@ -247,15 +256,69 @@ v1 (SUPERSEDED) ──superseded_by──> v2 (SUPERSEDED) ──superseded_by�
 
 `get_version_history` returns the full chain from any point. `get_latest_version` follows forward to the current active version.
 
+## Postgres Backend
+
+A production-ready Postgres backend ships as an optional extra, built on SQLAlchemy 2.0 and Alembic.
+
+### Install
+
+```bash
+uv add "mism-registry[postgres]"
+```
+
+### Apply migrations
+
+```bash
+MISM_DAL_DATABASE_URL="postgresql+psycopg://user:pass@localhost/mism" \
+  uv run alembic upgrade head
+```
+
+### Quick-start (scripts and notebooks)
+
+```python
+from mism_registry import register_dataset, find_resources
+from mism_registry.backends import create_registry
+
+registry, session = create_registry("postgresql+psycopg://user:pass@localhost/mism")
+
+dataset = register_dataset(registry, name="My Dataset", location_uri="s3://bucket/data.csv")
+
+session.commit()
+session.close()
+```
+
+### Production usage (per-request session management)
+
+```python
+from mism_registry.backends import PostgresRegistry, create_session_factory
+
+SessionFactory = create_session_factory("postgresql+psycopg://user:pass@localhost/mism")
+
+# Example FastAPI dependency
+def get_registry():
+    session = SessionFactory()
+    try:
+        registry = PostgresRegistry(session)
+        yield registry
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+```
+
+`PostgresRegistry` calls `flush()` but never `commit()` — the caller controls transaction boundaries. All operation functions (`register_dataset`, `prepare_run`, etc.) work identically with `PostgresRegistry` as with `InMemoryRegistry`.
+
 ## Custom Storage Backends
 
-The library defines a `Registry` protocol. Implement it to plug in any storage backend:
+The library defines a `Registry` protocol. Implement it to plug in any other storage backend:
 
 ```python
 from mism_registry import Registry, Resource, Run
 
-class PostgresRegistry:
-    """Implements the Registry protocol against PostgreSQL."""
+class MyCustomRegistry:
+    """Implements the Registry protocol against a custom store."""
 
     def register_resource(self, resource: Resource) -> Resource: ...
     def get_resource(self, resource_id: str) -> Resource: ...
@@ -315,6 +378,10 @@ uv run ruff check src/ tests/
 # Format
 uv run ruff format src/ tests/
 ```
+
+## Further Reading
+
+For a detailed walkthrough with more examples — including a full end-to-end pipeline, lineage tracing patterns, and testing recipes — see **[docs/guide.md](docs/guide.md)**.
 
 ## License
 

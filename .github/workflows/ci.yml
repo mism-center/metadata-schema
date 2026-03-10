@@ -41,3 +41,38 @@ jobs:
       - run: uv sync --group dev
       - name: Check formatting
         run: uv run ruff format --check src/ tests/
+
+  integration-test:
+    name: Integration tests (Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: mism_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Used by the pg_engine fixture in test_postgres_backend.py
+      MISM_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/mism_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install package with dev dependencies
+        run: uv sync --group dev
+
+      - name: Run Postgres integration tests
+        run: uv run pytest tests/test_postgres_backend.py -v --tb=short

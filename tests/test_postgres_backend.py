@@ -1,9 +1,12 @@
-"""Tests for PostgresRegistry backend.
+"""Integration tests for PostgresRegistry backend.
 
 Requires a running Postgres instance. Set MISM_TEST_DATABASE_URL to enable:
 
     export MISM_TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost/mism_test
     uv run pytest tests/test_postgres_backend.py -v
+
+The pg_engine fixture applies Alembic migrations programmatically, so the
+entire suite also validates that the migration-managed schema is correct.
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ import os
 from datetime import date, datetime, timezone
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from mism_registry import (
@@ -43,11 +46,26 @@ def pg_engine():
     url = os.environ.get("MISM_TEST_DATABASE_URL")
     if not url:
         pytest.skip("MISM_TEST_DATABASE_URL not set")
+
     engine = create_engine(url)
+
+    # Wipe any previous test state cleanly
     Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+    with engine.connect() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        conn.commit()
+
+    # Apply all migrations — tests run against the Alembic-managed schema,
+    # so this suite also validates that migrations produce a working database.
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config("alembic.ini")
+    cfg.set_main_option("sqlalchemy.url", url)
+    command.upgrade(cfg, "head")
+
     yield engine
-    Base.metadata.drop_all(engine)
+    engine.dispose()
 
 
 @pytest.fixture()
@@ -153,7 +171,6 @@ class TestRegisterAndRetrieve:
         pg_registry.register_resource(r)
         retrieved = pg_registry.get_resource(r.id)
 
-        # Verify all fields round-trip correctly
         assert retrieved.version == "2.0.0"
         assert len(retrieved.authors) == 2
         assert retrieved.authors[0].name == "Alice Smith"
@@ -251,12 +268,12 @@ class TestFindResources:
 
     def test_find_by_organisms(self, pg_registry):
         pg_registry.register_resource(
-            _make_dataset(
-                name="D-sars", location_uri="s3://d-sars", organisms=["SARS-CoV-2"]
-            )
+            _make_dataset(name="D-sars", location_uri="s3://d-sars", organisms=["SARS-CoV-2"])
         )
         pg_registry.register_resource(
-            _make_dataset(name="D-human", location_uri="s3://d-human", organisms=["Homo sapiens"])
+            _make_dataset(
+                name="D-human", location_uri="s3://d-human", organisms=["Homo sapiens"]
+            )
         )
         results = pg_registry.find_resources(organisms=["SARS-CoV-2"])
         assert any(r.name == "D-sars" for r in results)
@@ -265,9 +282,7 @@ class TestFindResources:
     def test_find_by_scales(self, pg_registry):
         pg_registry.register_resource(
             _make_dataset(
-                name="D-mol",
-                location_uri="s3://d-mol",
-                modeling_scales=["molecular"],
+                name="D-mol", location_uri="s3://d-mol", modeling_scales=["molecular"]
             )
         )
         results = pg_registry.find_resources(scales=["molecular"])
@@ -299,6 +314,53 @@ class TestFindResources:
         results = pg_registry.find_resources(tags=["nonexistent-tag-xyz"])
         assert results == []
 
+    def test_find_all_no_filters(self, pg_registry):
+        pg_registry.register_resource(_make_dataset(name="DA-all", location_uri="s3://da-all"))
+        pg_registry.register_resource(_make_model(name="MA-all", location_uri="docker://ma-all"))
+        results = pg_registry.find_resources()
+        names = {r.name for r in results}
+        assert "DA-all" in names
+        assert "MA-all" in names
+
+    def test_find_combined_filters(self, pg_registry):
+        """AND logic: resource must satisfy type + tags + owner simultaneously."""
+        pg_registry.register_resource(
+            _make_dataset(
+                name="D-combo-match",
+                location_uri="s3://combo-match",
+                format_tags=["csv", "genomics"],
+                owner="combo-owner",
+            )
+        )
+        # Same type + owner but wrong tags
+        pg_registry.register_resource(
+            _make_dataset(
+                name="D-combo-wrong-tag",
+                location_uri="s3://combo-wrong-tag",
+                format_tags=["fasta"],
+                owner="combo-owner",
+            )
+        )
+        # Same type + tags but different owner
+        pg_registry.register_resource(
+            _make_dataset(
+                name="D-combo-wrong-owner",
+                location_uri="s3://combo-wrong-owner",
+                format_tags=["csv", "genomics"],
+                owner="other-owner",
+            )
+        )
+
+        results = pg_registry.find_resources(
+            resource_type=ResourceType.DATASET,
+            tags=["csv"],
+            owner="combo-owner",
+        )
+        names = {r.name for r in results}
+        assert "D-combo-match" in names
+        assert "D-combo-wrong-tag" not in names
+        assert "D-combo-wrong-owner" not in names
+
 
 # ── Test: Update Resource ────────────────────────────────────────────
 
@@ -316,7 +378,6 @@ class TestUpdateResource:
         assert updated.description == "New desc"
         assert "updated" in updated.format_tags
 
-        # Verify persistence
         retrieved = pg_registry.get_resource(r.id)
         assert retrieved.description == "New desc"
 
@@ -384,6 +445,105 @@ class TestRunCRUD:
         assert updated.status == RunStatus.RUNNING
         assert updated.started_at is not None
 
+    def test_update_run_nonexistent_raises(self, pg_registry):
+        run = Run(model_id="any-model")
+        run.id = "nonexistent-run-id"
+        with pytest.raises(RunNotFoundError):
+            pg_registry.update_run(run)
+
+    def test_run_completed_fields(self, pg_registry):
+        """output_resource_ids, completed_at persist after COMPLETED update."""
+        model = _make_model(name="M-complete", location_uri="docker://m-complete")
+        d_in = _make_dataset(name="D-comp-in", location_uri="s3://d-comp-in")
+        d_out = _make_dataset(name="D-comp-out", location_uri="s3://d-comp-out")
+        pg_registry.register_resource(model)
+        pg_registry.register_resource(d_in)
+        pg_registry.register_resource(d_out)
+
+        run = Run(model_id=model.id, input_resource_ids=[d_in.id])
+        pg_registry.create_run(run)
+
+        run.status = RunStatus.RUNNING
+        run.started_at = datetime.now(timezone.utc)
+        pg_registry.update_run(run)
+
+        run.status = RunStatus.COMPLETED
+        run.completed_at = datetime.now(timezone.utc)
+        run.output_resource_ids = [d_out.id]
+        pg_registry.update_run(run)
+
+        retrieved = pg_registry.get_run(run.id)
+        assert retrieved.status == RunStatus.COMPLETED
+        assert retrieved.completed_at is not None
+        assert retrieved.output_resource_ids == [d_out.id]
+
+    def test_run_failed_fields(self, pg_registry):
+        """error_message, log_uri, completed_at persist after FAILED update."""
+        model = _make_model(name="M-fail", location_uri="docker://m-fail")
+        pg_registry.register_resource(model)
+
+        run = Run(model_id=model.id)
+        pg_registry.create_run(run)
+
+        run.status = RunStatus.RUNNING
+        run.started_at = datetime.now(timezone.utc)
+        pg_registry.update_run(run)
+
+        run.status = RunStatus.FAILED
+        run.completed_at = datetime.now(timezone.utc)
+        run.error_message = "OOM killed on node gpu-03"
+        run.log_uri = "s3://mism-logs/run-abc/stderr.log"
+        pg_registry.update_run(run)
+
+        retrieved = pg_registry.get_run(run.id)
+        assert retrieved.status == RunStatus.FAILED
+        assert retrieved.error_message == "OOM killed on node gpu-03"
+        assert retrieved.log_uri == "s3://mism-logs/run-abc/stderr.log"
+        assert retrieved.completed_at is not None
+
+
+# ── Test: RunEnvironment Round-Trip ──────────────────────────────────
+
+
+class TestRunEnvironment:
+    def test_all_fields_round_trip(self, pg_registry):
+        """Every RunEnvironment field survives the JSONB round-trip."""
+        model = _make_model(name="M-env", location_uri="docker://m-env")
+        pg_registry.register_resource(model)
+
+        env = RunEnvironment(
+            platform="biowulf",
+            container_uri="docker://mism/escape-model:v2.0",
+            container_digest="sha256:abc123def456",
+            conda_env="environment.yml",
+            hardware_description="2x V100 32GB",
+            extra={"slurm_job_id": 12345, "partition": "gpu"},
+        )
+        run = Run(model_id=model.id, environment=env)
+        pg_registry.create_run(run)
+
+        retrieved = pg_registry.get_run(run.id)
+        assert retrieved.environment is not None
+        e = retrieved.environment
+        assert e.platform == "biowulf"
+        assert e.container_uri == "docker://mism/escape-model:v2.0"
+        assert e.container_digest == "sha256:abc123def456"
+        assert e.conda_env == "environment.yml"
+        assert e.hardware_description == "2x V100 32GB"
+        assert e.extra["slurm_job_id"] == 12345
+        assert e.extra["partition"] == "gpu"
+
+    def test_no_environment(self, pg_registry):
+        """Run created without an environment comes back with environment=None."""
+        model = _make_model(name="M-no-env", location_uri="docker://m-no-env")
+        pg_registry.register_resource(model)
+
+        run = Run(model_id=model.id)
+        pg_registry.create_run(run)
+
+        retrieved = pg_registry.get_run(run.id)
+        assert retrieved.environment is None
+
 
 # ── Test: Find Runs ──────────────────────────────────────────────────
 
@@ -430,6 +590,24 @@ class TestFindRuns:
         results = pg_registry.find_runs(status=RunStatus.COMPLETED)
         assert not any(r.id == run.id for r in results)
 
+    def test_find_combined_model_and_status(self, pg_registry):
+        """model_id + status together: AND logic."""
+        m = _make_model(name="M-combo-run", location_uri="docker://m-combo-run")
+        pg_registry.register_resource(m)
+
+        run_reg = Run(model_id=m.id, status=RunStatus.REGISTERED)
+        run_fail = Run(model_id=m.id, status=RunStatus.FAILED)
+        pg_registry.create_run(run_reg)
+        pg_registry.create_run(run_fail)
+
+        results = pg_registry.find_runs(model_id=m.id, status=RunStatus.REGISTERED)
+        assert len(results) == 1
+        assert results[0].id == run_reg.id
+
+    def test_find_no_matches(self, pg_registry):
+        results = pg_registry.find_runs(model_id="nonexistent-model-id-xyz")
+        assert results == []
+
 
 # ── Test: Lineage ────────────────────────────────────────────────────
 
@@ -462,10 +640,7 @@ class TestLineage:
         pg_registry.register_resource(model)
         pg_registry.register_resource(d_in)
 
-        run = Run(
-            model_id=model.id,
-            input_resource_ids=[d_in.id],
-        )
+        run = Run(model_id=model.id, input_resource_ids=[d_in.id])
         pg_registry.create_run(run)
 
         deps = pg_registry.get_dependents(d_in.id)
@@ -504,7 +679,6 @@ class TestVersioning:
         )
         pg_registry.register_resource(v2)
 
-        # Mark v1 as superseded
         v1.status = ResourceStatus.SUPERSEDED
         v1.superseded_by = v2.id
         v1.updated_at = datetime.now(timezone.utc)
@@ -531,7 +705,6 @@ class TestVersioning:
         )
         pg_registry.register_resource(v3)
 
-        # Wire up the superseded_by pointers
         v1.status = ResourceStatus.SUPERSEDED
         v1.superseded_by = v2.id
         v1.updated_at = datetime.now(timezone.utc)
@@ -542,7 +715,7 @@ class TestVersioning:
         v2.updated_at = datetime.now(timezone.utc)
         pg_registry.update_resource(v2)
 
-        # Query from any point in the chain
+        # Chain navigable from any point
         for rid in [v1.id, v2.id, v3.id]:
             history = pg_registry.get_version_history(rid)
             assert len(history) == 3
@@ -552,3 +725,98 @@ class TestVersioning:
 
     def test_get_version_history_nonexistent(self, pg_registry):
         assert pg_registry.get_version_history("nonexistent-id") == []
+
+
+# ── Test: Edge Cases ─────────────────────────────────────────────────
+
+
+class TestEdgeCases:
+    def test_unicode_in_fields(self, pg_registry):
+        """Unicode characters in name, description, and notes survive round-trips."""
+        r = _make_dataset(
+            name="SARS-CoV-2 Αλφα παραλλαγή",  # Greek
+            location_uri="s3://unicode-test/data.csv",
+            description="Données génomiques du variant 日本語 テスト",  # French + Japanese
+        )
+        pg_registry.register_resource(r)
+        retrieved = pg_registry.get_resource(r.id)
+        assert retrieved.name == "SARS-CoV-2 Αλφα παραλλαγή"
+        assert "génomiques" in retrieved.description
+
+        model = _make_model(name="M-unicode", location_uri="docker://m-unicode")
+        pg_registry.register_resource(model)
+        run = Run(model_id=model.id, notes="Запуск с параметрами 中文")  # Russian + Chinese
+        pg_registry.create_run(run)
+        ret_run = pg_registry.get_run(run.id)
+        assert "параметрами" in ret_run.notes
+
+    def test_execution_ref_round_trip(self, pg_registry):
+        """execution_ref (git hash, image tag, etc.) is stored and retrieved."""
+        r = _make_model(
+            name="M-execref",
+            location_uri="docker://mism/model:v3",
+            execution_ref="git+https://github.com/mism/model@a1b2c3d4",
+        )
+        pg_registry.register_resource(r)
+        retrieved = pg_registry.get_resource(r.id)
+        assert retrieved.execution_ref == "git+https://github.com/mism/model@a1b2c3d4"
+
+    def test_large_metadata(self, pg_registry):
+        """Deeply nested metadata dict round-trips correctly via JSONB."""
+        large_meta = {
+            "training": {
+                "epochs": 100,
+                "learning_rate": 0.001,
+                "optimizer": "adam",
+                "scheduler": {"type": "cosine", "T_max": 50},
+            },
+            "data": {
+                "train_split": 0.8,
+                "val_split": 0.1,
+                "test_split": 0.1,
+                "augmentations": ["random_crop", "horizontal_flip", "color_jitter"],
+            },
+            "hardware": {
+                "gpus": 4,
+                "gpu_type": "A100",
+                "memory_gb": 320,
+                "nodes": 1,
+            },
+            "tags": ["production", "v3", "validated"],
+            "checksum": "sha256:deadbeef",
+        }
+        r = _make_dataset(
+            name="D-large-meta",
+            location_uri="s3://large-meta/data.csv",
+            metadata=large_meta,
+        )
+        pg_registry.register_resource(r)
+        retrieved = pg_registry.get_resource(r.id)
+
+        assert retrieved.metadata["training"]["epochs"] == 100
+        assert retrieved.metadata["training"]["scheduler"]["type"] == "cosine"
+        assert retrieved.metadata["data"]["augmentations"] == [
+            "random_crop",
+            "horizontal_flip",
+            "color_jitter",
+        ]
+        assert retrieved.metadata["hardware"]["gpus"] == 4
+        assert "production" in retrieved.metadata["tags"]
+
+    def test_resource_archived_status(self, pg_registry):
+        """ARCHIVED status is stored and retrieved correctly."""
+        r = _make_dataset(
+            name="D-archived",
+            location_uri="s3://archived/old-data.csv",
+            status=ResourceStatus.ARCHIVED,
+        )
+        pg_registry.register_resource(r)
+        retrieved = pg_registry.get_resource(r.id)
+        assert retrieved.status == ResourceStatus.ARCHIVED
+
+        # Also verify it's not returned as ACTIVE in a status-implied search
+        # (find_resources has no status filter, but we can confirm the field)
+        all_resources = pg_registry.find_resources()
+        match = next((x for x in all_resources if x.id == r.id), None)
+        assert match is not None
+        assert match.status == ResourceStatus.ARCHIVED
