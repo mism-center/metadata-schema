@@ -78,10 +78,14 @@ class ResourceModel(Base):
     version: Mapped[str] = mapped_column(String(100), default="")
     status: Mapped[str] = mapped_column(String(20), default="active")
     new_version_of: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("resources.id"), nullable=True,
+        String(36),
+        ForeignKey("resources.id"),
+        nullable=True,
     )
     superseded_by: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("resources.id"), nullable=True,
+        String(36),
+        ForeignKey("resources.id"),
+        nullable=True,
     )
 
     # Authorship & attribution
@@ -113,10 +117,13 @@ class ResourceModel(Base):
     owner: Mapped[str] = mapped_column(String(255), default="")
     metadata_: Mapped[Any] = mapped_column("metadata", JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(),
+        DateTime(timezone=True),
+        server_default=func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     __table_args__ = (
@@ -144,17 +151,20 @@ class RunModel(Base):
     environment: Mapped[Any] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="registered")
     started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     error_message: Mapped[str] = mapped_column(Text, default="")
     log_uri: Mapped[str] = mapped_column(Text, default="")
     triggered_by: Mapped[str] = mapped_column(String(255), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(),
+        DateTime(timezone=True),
+        server_default=func.now(),
     )
 
     __table_args__ = (
@@ -426,9 +436,7 @@ class PostgresRegistry:
         model.size_bytes = resource.size_bytes
         model.external_ids = resource.external_ids
         model.license = resource.license
-        model.execution_type = (
-            resource.execution_type.value if resource.execution_type else None
-        )
+        model.execution_type = resource.execution_type.value if resource.execution_type else None
         model.execution_ref = resource.execution_ref
         model.io_spec = _serialize_io_spec(resource.io_spec)
         model.owner = resource.owner
@@ -482,9 +490,7 @@ class PostgresRegistry:
         if model_id is not None:
             stmt = stmt.where(RunModel.model_id == model_id)
         if input_resource_id is not None:
-            stmt = stmt.where(
-                literal(input_resource_id) == RunModel.input_resource_ids.any()
-            )
+            stmt = stmt.where(literal(input_resource_id) == RunModel.input_resource_ids.any())
         if status is not None:
             stmt = stmt.where(RunModel.status == status.value)
         results = self._session.execute(stmt).scalars().all()
@@ -493,16 +499,12 @@ class PostgresRegistry:
     # ── Lineage ──────────────────────────────────────────────────────
 
     def get_lineage(self, resource_id: str) -> list[Run]:
-        stmt = select(RunModel).where(
-            literal(resource_id) == RunModel.output_resource_ids.any()
-        )
+        stmt = select(RunModel).where(literal(resource_id) == RunModel.output_resource_ids.any())
         results = self._session.execute(stmt).scalars().all()
         return [run_from_db(m) for m in results]
 
     def get_dependents(self, resource_id: str) -> list[Run]:
-        stmt = select(RunModel).where(
-            literal(resource_id) == RunModel.input_resource_ids.any()
-        )
+        stmt = select(RunModel).where(literal(resource_id) == RunModel.input_resource_ids.any())
         results = self._session.execute(stmt).scalars().all()
         return [run_from_db(m) for m in results]
 

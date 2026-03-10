@@ -271,9 +271,7 @@ class TestFindResources:
             _make_dataset(name="D-sars", location_uri="s3://d-sars", organisms=["SARS-CoV-2"])
         )
         pg_registry.register_resource(
-            _make_dataset(
-                name="D-human", location_uri="s3://d-human", organisms=["Homo sapiens"]
-            )
+            _make_dataset(name="D-human", location_uri="s3://d-human", organisms=["Homo sapiens"])
         )
         results = pg_registry.find_resources(organisms=["SARS-CoV-2"])
         assert any(r.name == "D-sars" for r in results)
@@ -281,9 +279,7 @@ class TestFindResources:
 
     def test_find_by_scales(self, pg_registry):
         pg_registry.register_resource(
-            _make_dataset(
-                name="D-mol", location_uri="s3://d-mol", modeling_scales=["molecular"]
-            )
+            _make_dataset(name="D-mol", location_uri="s3://d-mol", modeling_scales=["molecular"])
         )
         results = pg_registry.find_resources(scales=["molecular"])
         assert any(r.name == "D-mol" for r in results)
@@ -674,9 +670,7 @@ class TestVersioning:
         v1 = _make_dataset(name="D-chain", location_uri="s3://chain-v1")
         pg_registry.register_resource(v1)
 
-        v2 = _make_dataset(
-            name="D-chain", location_uri="s3://chain-v2", new_version_of=v1.id
-        )
+        v2 = _make_dataset(name="D-chain", location_uri="s3://chain-v2", new_version_of=v1.id)
         pg_registry.register_resource(v2)
 
         v1.status = ResourceStatus.SUPERSEDED
@@ -695,14 +689,10 @@ class TestVersioning:
         v1 = _make_dataset(name="D-hist", location_uri="s3://hist-v1")
         pg_registry.register_resource(v1)
 
-        v2 = _make_dataset(
-            name="D-hist", location_uri="s3://hist-v2", new_version_of=v1.id
-        )
+        v2 = _make_dataset(name="D-hist", location_uri="s3://hist-v2", new_version_of=v1.id)
         pg_registry.register_resource(v2)
 
-        v3 = _make_dataset(
-            name="D-hist", location_uri="s3://hist-v3", new_version_of=v2.id
-        )
+        v3 = _make_dataset(name="D-hist", location_uri="s3://hist-v3", new_version_of=v2.id)
         pg_registry.register_resource(v3)
 
         v1.status = ResourceStatus.SUPERSEDED
