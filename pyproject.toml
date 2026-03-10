@@ -47,6 +47,9 @@ dev = [
 testpaths = ["tests"]
 addopts = "-v --tb=short"
 
+[tool.coverage.run]
+omit = ["*/mism_registry/backends/*"]
+
 [tool.mypy]
 python_version = "3.10"
 strict = true
