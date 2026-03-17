@@ -57,6 +57,7 @@ from mism_registry.types import Author, IOSlot, IOSpec, Publication, RunEnvironm
 
 # ── SQLAlchemy Base ──────────────────────────────────────────────────
 
+
 def _enum_values(e: Any) -> list[str]:
     return [x.value for x in e]
 
@@ -83,8 +84,10 @@ class ResourceModel(Base):
     version: Mapped[str] = mapped_column(String(100), default="")
     status: Mapped[ResourceStatus] = mapped_column(
         Enum(
-            ResourceStatus, values_callable=_enum_values,
-            name="resourcestatus", create_type=False,
+            ResourceStatus,
+            values_callable=_enum_values,
+            name="resourcestatus",
+            create_type=False,
         ),
         default=ResourceStatus.ACTIVE,
     )
