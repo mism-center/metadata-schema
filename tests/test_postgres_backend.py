@@ -53,6 +53,11 @@ def pg_engine():
     Base.metadata.drop_all(engine)
     with engine.connect() as conn:
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        conn.execute(
+            text(
+                "DROP TYPE IF EXISTS resourcetype, executiontype, resourcestatus, runstatus"
+            )
+        )
         conn.commit()
 
     # Apply all migrations — tests run against the Alembic-managed schema,
