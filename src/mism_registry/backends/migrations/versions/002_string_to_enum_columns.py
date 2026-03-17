@@ -46,6 +46,10 @@ def upgrade() -> None:
     resourcestatus.create(op.get_bind(), checkfirst=True)
     runstatus.create(op.get_bind(), checkfirst=True)
 
+    # Drop server defaults before type conversion (PG can't auto-cast them)
+    op.alter_column("resources", "status", server_default=None)
+    op.alter_column("runs", "status", server_default=None)
+
     # Alter resources columns
     op.alter_column(
         "resources",
@@ -59,7 +63,6 @@ def upgrade() -> None:
         "status",
         type_=resourcestatus,
         postgresql_using="status::resourcestatus",
-        server_default="active",
         existing_nullable=False,
     )
     op.alter_column(
@@ -76,9 +79,12 @@ def upgrade() -> None:
         "status",
         type_=runstatus,
         postgresql_using="status::runstatus",
-        server_default="registered",
         existing_nullable=False,
     )
+
+    # Re-add server defaults as enum values
+    op.alter_column("resources", "status", server_default="active")
+    op.alter_column("runs", "status", server_default="registered")
 
 
 def downgrade() -> None:
