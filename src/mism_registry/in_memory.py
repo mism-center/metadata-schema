@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import copy
+from datetime import date
 
-from .enums import ResourceType, RunStatus
+from .enums import ResourceStatus, ResourceType, RunStatus
 from .errors import DuplicateResourceError, ResourceNotFoundError, RunNotFoundError
 from .resource import Resource
 from .run import Run
@@ -44,6 +45,10 @@ class InMemoryRegistry:
         name_contains: str | None = None,
         organisms: list[str] | None = None,
         scales: list[str] | None = None,
+        domains: list[str] | None = None,
+        status: ResourceStatus | None = None,
+        date_published_after: date | None = None,
+        date_published_before: date | None = None,
     ) -> list[Resource]:
         results = list(self._resources.values())
         if resource_type is not None:
@@ -63,6 +68,23 @@ class InMemoryRegistry:
             scale_set = {s.lower() for s in scales}
             results = [
                 r for r in results if scale_set.issubset({s.lower() for s in r.modeling_scales})
+            ]
+        if domains is not None:
+            domain_set = {d.lower() for d in domains}
+            results = [r for r in results if domain_set.issubset({d.lower() for d in r.domains})]
+        if status is not None:
+            results = [r for r in results if r.status == status]
+        if date_published_after is not None:
+            results = [
+                r
+                for r in results
+                if r.date_published is not None and r.date_published >= date_published_after
+            ]
+        if date_published_before is not None:
+            results = [
+                r
+                for r in results
+                if r.date_published is not None and r.date_published <= date_published_before
             ]
         return [copy.deepcopy(r) for r in results]
 

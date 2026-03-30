@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Protocol, runtime_checkable
 
-from .enums import ResourceType, RunStatus
+from .enums import ResourceStatus, ResourceType, RunStatus
 from .resource import Resource
 from .run import Run
 
@@ -29,6 +30,10 @@ class Registry(Protocol):
         name_contains: str | None = None,
         organisms: list[str] | None = None,
         scales: list[str] | None = None,
+        domains: list[str] | None = None,
+        status: ResourceStatus | None = None,
+        date_published_after: date | None = None,
+        date_published_before: date | None = None,
     ) -> list[Resource]: ...
 
     def update_resource(self, resource: Resource) -> Resource: ...

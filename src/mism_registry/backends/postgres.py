@@ -25,6 +25,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Column,
     Date,
     DateTime,
     Enum,
@@ -34,9 +35,11 @@ from sqlalchemy import (
     Text,
     create_engine,
     func,
+    literal_column,
     select,
+    text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -53,6 +56,7 @@ from mism_registry.errors import (
 )
 from mism_registry.resource import Resource
 from mism_registry.run import Run
+from mism_registry.search import SearchQuery, SearchResult
 from mism_registry.types import Author, IOSlot, IOSpec, Publication, RunEnvironment
 
 # ── SQLAlchemy Base ──────────────────────────────────────────────────
@@ -143,6 +147,9 @@ class ResourceModel(Base):
         onupdate=func.now(),
     )
 
+    # Full-text search (populated by DB trigger, not by application code)
+    search_vector = Column(TSVECTOR, nullable=True)
+
     __table_args__ = (
         Index("ix_resources_resource_type", "resource_type"),
         Index("ix_resources_status", "status"),
@@ -194,6 +201,32 @@ class RunModel(Base):
         Index("ix_runs_input_resource_ids", "input_resource_ids", postgresql_using="gin"),
         Index("ix_runs_output_resource_ids", "output_resource_ids", postgresql_using="gin"),
     )
+
+
+# ── Filter / aggregation field maps ──────────────────────────────────
+
+_FILTER_COLUMN_MAP: dict[str, Any] = {
+    "resource_type": ResourceModel.resource_type,
+    "status": ResourceModel.status,
+    "execution_type": ResourceModel.execution_type,
+    "owner": ResourceModel.owner,
+    "organisms": ResourceModel.organisms,
+    "domains": ResourceModel.domains,
+    "modeling_scales": ResourceModel.modeling_scales,
+    "format_tags": ResourceModel.format_tags,
+    "created_at": ResourceModel.created_at,
+    "updated_at": ResourceModel.updated_at,
+    "date_published": ResourceModel.date_published,
+}
+
+_ARRAY_FIELDS: frozenset[str] = frozenset(
+    {
+        "organisms",
+        "domains",
+        "modeling_scales",
+        "format_tags",
+    }
+)
 
 
 # ── Serialization Helpers ────────────────────────────────────────────
@@ -411,6 +444,10 @@ class PostgresRegistry:
         name_contains: str | None = None,
         organisms: list[str] | None = None,
         scales: list[str] | None = None,
+        domains: list[str] | None = None,
+        status: ResourceStatus | None = None,
+        date_published_after: date | None = None,
+        date_published_before: date | None = None,
     ) -> list[Resource]:
         stmt = select(ResourceModel)
         if resource_type is not None:
@@ -427,8 +464,148 @@ class PostgresRegistry:
             stmt = stmt.where(ResourceModel.organisms.overlap(organisms))
         if scales is not None:
             stmt = stmt.where(ResourceModel.modeling_scales.overlap(scales))
+        if domains is not None:
+            stmt = stmt.where(ResourceModel.domains.overlap(domains))
+        if status is not None:
+            stmt = stmt.where(ResourceModel.status == status)
+        if date_published_after is not None:
+            stmt = stmt.where(ResourceModel.date_published >= date_published_after)
+        if date_published_before is not None:
+            stmt = stmt.where(ResourceModel.date_published <= date_published_before)
         results = self._session.execute(stmt).scalars().all()
         return [resource_from_db(m) for m in results]
+
+    # ── Full-text search with filters & aggregations ──────────────────
+
+    def search_resources(self, query: SearchQuery) -> SearchResult:
+        """Execute a full-text search with structured filters and aggregations.
+
+        This method is Postgres-specific (tsvector, unnest) and is NOT part
+        of the generic Registry protocol.
+        """
+        from mism_registry.search import AGGREGATABLE_FIELDS, AggBucket
+
+        # -- Build shared WHERE conditions --------------------------------
+        conditions = self._build_filter_conditions(query.filters)
+
+        ts_query = None
+        if query.text:
+            ts_query = func.plainto_tsquery("english", query.text)
+            conditions.append(ResourceModel.search_vector.op("@@")(ts_query))
+
+        # -- Main query: paginated results --------------------------------
+        stmt = select(ResourceModel)
+        if ts_query is not None:
+            rank = func.ts_rank_cd(ResourceModel.search_vector, ts_query)
+            stmt = stmt.add_columns(rank.label("score"))
+
+        for cond in conditions:
+            stmt = stmt.where(cond)
+
+        # Sorting
+        if query.sort_field == "_score" and ts_query is not None:
+            stmt = stmt.order_by(literal_column("score").desc())
+        elif query.sort_field == "_score":
+            # No text query — fall back to created_at
+            stmt = stmt.order_by(ResourceModel.created_at.desc())
+        else:
+            col = getattr(ResourceModel, query.sort_field, ResourceModel.created_at)
+            if query.sort_order == "asc":
+                stmt = stmt.order_by(col.asc())
+            else:
+                stmt = stmt.order_by(col.desc())
+
+        stmt = stmt.limit(query.limit).offset(query.offset)
+        rows = self._session.execute(stmt).all()
+
+        if ts_query is not None:
+            resources = [resource_from_db(row[0]) for row in rows]
+            scores: list[float] | None = [float(row[1]) for row in rows]
+        else:
+            resources = [resource_from_db(row[0]) for row in rows]
+            scores = None
+
+        # -- Total count --------------------------------------------------
+        count_stmt = select(func.count()).select_from(ResourceModel)
+        for cond in conditions:
+            count_stmt = count_stmt.where(cond)
+        total: int = self._session.execute(count_stmt).scalar_one()
+
+        # -- Aggregations -------------------------------------------------
+        aggs: dict[str, list[AggBucket]] = {}
+        for field_name in query.agg_fields:
+            if field_name not in AGGREGATABLE_FIELDS:
+                continue
+            aggs[field_name] = self._run_aggregation(field_name, conditions)
+
+        return SearchResult(
+            total=total,
+            resources=resources,
+            scores=scores,
+            aggs=aggs,
+        )
+
+    def _build_filter_conditions(self, filters: tuple) -> list:
+        """Convert FieldFilter tuples into SQLAlchemy WHERE conditions."""
+        from datetime import date, datetime
+
+        conditions: list = []
+        for f in filters:
+            col = _FILTER_COLUMN_MAP.get(f.field)
+            if col is None:
+                continue
+
+            if f.op == "eq":
+                conditions.append(col == f.value)
+            elif f.op == "overlap":
+                val = f.value if isinstance(f.value, list) else [f.value]
+                conditions.append(col.overlap(val))
+            elif f.op == "contains":
+                val = f.value if isinstance(f.value, list) else [f.value]
+                conditions.append(col.contains(val))
+            elif f.op == "gte":
+                if isinstance(f.value, str):
+                    conditions.append(col >= f.value)
+                else:
+                    conditions.append(col >= f.value)
+            elif f.op == "lte":
+                if isinstance(f.value, str):
+                    conditions.append(col <= f.value)
+                else:
+                    conditions.append(col <= f.value)
+        return conditions
+
+    def _run_aggregation(self, field_name: str, conditions: list) -> list:
+        """Run a single aggregation query for a field."""
+        from mism_registry.search import AggBucket
+
+        col = _FILTER_COLUMN_MAP.get(field_name)
+        if col is None:
+            return []
+
+        # Array fields need unnest; scalar fields use GROUP BY directly
+        if field_name in _ARRAY_FIELDS:
+            val = func.unnest(col).label("val")
+            agg_stmt = select(val, func.count().label("cnt")).select_from(ResourceModel)
+            for cond in conditions:
+                agg_stmt = agg_stmt.where(cond)
+            agg_stmt = agg_stmt.group_by(literal_column("val")).order_by(
+                literal_column("cnt").desc()
+            )
+        else:
+            agg_stmt = select(col.label("val"), func.count().label("cnt")).select_from(
+                ResourceModel
+            )
+            for cond in conditions:
+                agg_stmt = agg_stmt.where(cond)
+            agg_stmt = agg_stmt.group_by(col).order_by(literal_column("cnt").desc())
+
+        rows = self._session.execute(agg_stmt).all()
+        return [
+            AggBucket(key=str(row.val) if row.val is not None else "", count=row.cnt)
+            for row in rows
+            if row.val is not None
+        ]
 
     def update_resource(self, resource: Resource) -> Resource:
         model = self._session.get(ResourceModel, resource.id)

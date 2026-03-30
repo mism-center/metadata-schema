@@ -1,5 +1,7 @@
 """Tests for InMemoryRegistry."""
 
+from datetime import date
+
 import pytest
 
 from mism_registry import (
@@ -122,6 +124,55 @@ class TestFindResources:
         results = registry.find_resources(scales=["molecular"])
         assert len(results) == 1
         assert results[0].name == "d1"
+
+    def test_find_by_domains(self, registry: InMemoryRegistry):
+        self._register(registry, name="d1", domains=["virology", "immunology"])
+        self._register(registry, name="d2", domains=["oncology"], location_uri="s3://y")
+        results = registry.find_resources(domains=["virology"])
+        assert len(results) == 1
+        assert results[0].name == "d1"
+
+    def test_find_by_status(self, registry: InMemoryRegistry):
+        r1 = self._register(registry, name="active")
+        r2 = self._register(registry, name="archived", location_uri="s3://y")
+        r2.status = ResourceStatus.ARCHIVED
+        registry.update_resource(r2)
+        results = registry.find_resources(status=ResourceStatus.ACTIVE)
+        assert len(results) == 1
+        assert results[0].name == "active"
+
+    def test_find_by_date_published_after(self, registry: InMemoryRegistry):
+        self._register(registry, name="old", date_published=date(2020, 1, 1))
+        self._register(
+            registry, name="new", date_published=date(2024, 6, 15), location_uri="s3://y"
+        )
+        results = registry.find_resources(date_published_after=date(2023, 1, 1))
+        assert len(results) == 1
+        assert results[0].name == "new"
+
+    def test_find_by_date_published_before(self, registry: InMemoryRegistry):
+        self._register(registry, name="old", date_published=date(2020, 1, 1))
+        self._register(
+            registry, name="new", date_published=date(2024, 6, 15), location_uri="s3://y"
+        )
+        results = registry.find_resources(date_published_before=date(2021, 1, 1))
+        assert len(results) == 1
+        assert results[0].name == "old"
+
+    def test_find_by_date_range(self, registry: InMemoryRegistry):
+        self._register(registry, name="old", date_published=date(2019, 1, 1))
+        self._register(
+            registry, name="mid", date_published=date(2022, 6, 1), location_uri="s3://y"
+        )
+        self._register(
+            registry, name="new", date_published=date(2025, 1, 1), location_uri="s3://z"
+        )
+        results = registry.find_resources(
+            date_published_after=date(2021, 1, 1),
+            date_published_before=date(2023, 12, 31),
+        )
+        assert len(results) == 1
+        assert results[0].name == "mid"
 
     def test_find_combined_filters(self, registry: InMemoryRegistry):
         self._register(

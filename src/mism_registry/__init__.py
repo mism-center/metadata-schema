@@ -31,6 +31,14 @@ from .operations import (
 from .protocol import Registry
 from .resource import Resource
 from .run import Run
+from .search import (
+    AGGREGATABLE_FIELDS,
+    FILTERABLE_FIELDS,
+    AggBucket,
+    FieldFilter,
+    SearchQuery,
+    SearchResult,
+)
 from .types import Author, IOSlot, IOSpec, Publication, RunEnvironment
 
 __all__ = [
@@ -59,6 +67,13 @@ __all__ = [
     # Protocol & Implementation
     "Registry",
     "InMemoryRegistry",
+    # Search
+    "SearchQuery",
+    "SearchResult",
+    "FieldFilter",
+    "AggBucket",
+    "FILTERABLE_FIELDS",
+    "AGGREGATABLE_FIELDS",
     # Operations
     "register_dataset",
     "register_model",
