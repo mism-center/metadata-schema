@@ -37,7 +37,6 @@ from sqlalchemy import (
     func,
     literal_column,
     select,
-    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.orm import (
@@ -547,7 +546,6 @@ class PostgresRegistry:
 
     def _build_filter_conditions(self, filters: tuple) -> list:
         """Convert FieldFilter tuples into SQLAlchemy WHERE conditions."""
-        from datetime import date, datetime
 
         conditions: list = []
         for f in filters:

@@ -133,7 +133,6 @@ class TestFindResources:
         assert results[0].name == "d1"
 
     def test_find_by_status(self, registry: InMemoryRegistry):
-        r1 = self._register(registry, name="active")
         r2 = self._register(registry, name="archived", location_uri="s3://y")
         r2.status = ResourceStatus.ARCHIVED
         registry.update_resource(r2)
