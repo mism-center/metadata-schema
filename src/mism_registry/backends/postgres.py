@@ -599,11 +599,15 @@ class PostgresRegistry:
             agg_stmt = agg_stmt.group_by(col).order_by(literal_column("cnt").desc())
 
         rows = self._session.execute(agg_stmt).all()
-        return [
-            AggBucket(key=str(row.val) if row.val is not None else "", count=row.cnt)
-            for row in rows
-            if row.val is not None
-        ]
+        buckets = []
+        for row in rows:
+            if row.val is None:
+                continue
+            # Enum columns return Python enum instances — use .value for the string
+            val = row.val
+            key = val.value if hasattr(val, "value") else str(val)
+            buckets.append(AggBucket(key=key, count=row.cnt))
+        return buckets
 
     def update_resource(self, resource: Resource) -> Resource:
         model = self._session.get(ResourceModel, resource.id)
