@@ -752,9 +752,14 @@ class PostgresRegistry:
 # ── Session Factory Helpers ──────────────────────────────────────────
 
 
-def create_session_factory(database_url: str) -> sessionmaker[Session]:
+def create_session_factory(
+    database_url: str,
+    *,
+    pool_pre_ping: bool = True,
+    pool_recycle: int = 1800,
+) -> sessionmaker[Session]:
     """Create a SQLAlchemy session factory bound to the given database URL."""
-    engine = create_engine(database_url)
+    engine = create_engine(database_url, pool_pre_ping=pool_pre_ping, pool_recycle=pool_recycle)
     return sessionmaker(bind=engine)
 
 
