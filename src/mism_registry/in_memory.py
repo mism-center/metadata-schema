@@ -9,6 +9,7 @@ from .enums import ResourceStatus, ResourceType, RunStatus
 from .errors import DuplicateResourceError, ResourceNotFoundError, RunNotFoundError
 from .resource import Resource
 from .run import Run
+from .run_detail import ModelRunDetail, ModelRunSummary
 
 
 class InMemoryRegistry:
@@ -143,6 +144,36 @@ class InMemoryRegistry:
         return [
             copy.deepcopy(r) for r in self._runs.values() if resource_id in r.input_resource_ids
         ]
+
+    def get_model_run_details(
+        self,
+        model_id: str,
+        *,
+        status: RunStatus | None = None,
+    ) -> ModelRunSummary:
+        """Fetch all runs for a model with hydrated input/output Resources."""
+        model = self.get_resource(model_id)
+        runs = self.find_runs(model_id=model_id, status=status)
+
+        # Collect unique resource IDs and batch-fetch
+        all_ids: set[str] = set()
+        for run in runs:
+            all_ids.update(run.input_resource_ids)
+            all_ids.update(run.output_resource_ids)
+
+        cache: dict[str, Resource] = {}
+        for rid in all_ids:
+            cache[rid] = self.get_resource(rid)
+
+        details = [
+            ModelRunDetail(
+                run=run,
+                input_resources=[cache[rid] for rid in run.input_resource_ids],
+                output_resources=[cache[rid] for rid in run.output_resource_ids],
+            )
+            for run in runs
+        ]
+        return ModelRunSummary(model=model, runs=details)
 
     # ── Version methods ───────────────────────────────────────────────
 

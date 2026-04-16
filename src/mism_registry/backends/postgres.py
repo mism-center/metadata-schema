@@ -55,6 +55,7 @@ from mism_registry.errors import (
 )
 from mism_registry.resource import Resource
 from mism_registry.run import Run
+from mism_registry.run_detail import ModelRunDetail, ModelRunSummary
 from mism_registry.search import SearchQuery, SearchResult
 from mism_registry.types import Author, IOSlot, IOSpec, Publication, RunEnvironment
 
@@ -706,6 +707,56 @@ class PostgresRegistry:
         stmt = select(RunModel).where(RunModel.input_resource_ids.contains([resource_id]))
         results = self._session.execute(stmt).scalars().all()
         return [run_from_db(m) for m in results]
+
+    def get_model_run_details(
+        self,
+        model_id: str,
+        *,
+        status: RunStatus | None = None,
+    ) -> ModelRunSummary:
+        """Fetch all runs for a model with hydrated input/output Resources.
+
+        Optimized for Postgres: fetches the model in one query, all runs
+        in a second, and all referenced resources in a single batch
+        ``WHERE id IN (...)`` query instead of N+1 calls.
+        """
+        # 1. Fetch the model resource
+        model_row = self._session.get(ResourceModel, model_id)
+        if model_row is None:
+            raise ResourceNotFoundError(model_id)
+        model = resource_from_db(model_row)
+
+        # 2. Fetch all runs for this model
+        run_stmt = select(RunModel).where(RunModel.model_id == model_id)
+        if status is not None:
+            run_stmt = run_stmt.where(RunModel.status == status)
+        run_rows = self._session.execute(run_stmt).scalars().all()
+        runs = [run_from_db(r) for r in run_rows]
+
+        # 3. Collect all unique resource IDs referenced by runs
+        all_resource_ids: set[str] = set()
+        for run in runs:
+            all_resource_ids.update(run.input_resource_ids)
+            all_resource_ids.update(run.output_resource_ids)
+
+        # 4. Batch-fetch all resources in one query
+        resource_cache: dict[str, Resource] = {}
+        if all_resource_ids:
+            res_stmt = select(ResourceModel).where(ResourceModel.id.in_(all_resource_ids))
+            res_rows = self._session.execute(res_stmt).scalars().all()
+            for row in res_rows:
+                resource_cache[row.id] = resource_from_db(row)
+
+        # 5. Assemble enriched run details
+        details = [
+            ModelRunDetail(
+                run=run,
+                input_resources=[resource_cache[rid] for rid in run.input_resource_ids],
+                output_resources=[resource_cache[rid] for rid in run.output_resource_ids],
+            )
+            for run in runs
+        ]
+        return ModelRunSummary(model=model, runs=details)
 
     # ── Versioning ───────────────────────────────────────────────────
 

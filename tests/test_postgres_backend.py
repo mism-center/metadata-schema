@@ -813,3 +813,106 @@ class TestEdgeCases:
         match = next((x for x in all_resources if x.id == r.id), None)
         assert match is not None
         assert match.status == ResourceStatus.ARCHIVED
+
+
+# ── Test: Get Model Run Details ─────────────────────────────────────
+
+
+class TestGetModelRunDetails:
+    def test_completed_run_with_outputs(self, pg_registry):
+        """Full lifecycle: model + dataset → run → complete with output → detail query."""
+        model = _make_model(name="M-detail", location_uri="docker://m-detail:v1")
+        pg_registry.register_resource(model)
+        d_in = _make_dataset(name="D-in-detail", location_uri="s3://detail-in")
+        pg_registry.register_resource(d_in)
+        d_out = _make_dataset(name="D-out-detail", location_uri="s3://detail-out")
+        pg_registry.register_resource(d_out)
+
+        run = Run(
+            model_id=model.id,
+            model_version="1.0",
+            input_resource_ids=[d_in.id],
+            output_resource_ids=[d_out.id],
+            status=RunStatus.COMPLETED,
+        )
+        pg_registry.create_run(run)
+
+        summary = pg_registry.get_model_run_details(model.id)
+        assert summary.model.id == model.id
+        assert summary.model.name == "M-detail"
+        assert len(summary.runs) == 1
+
+        detail = summary.runs[0]
+        assert detail.run.model_id == model.id
+        assert detail.run.status == RunStatus.COMPLETED
+        assert len(detail.input_resources) == 1
+        assert detail.input_resources[0].id == d_in.id
+        assert detail.input_resources[0].name == "D-in-detail"
+        assert len(detail.output_resources) == 1
+        assert detail.output_resources[0].id == d_out.id
+        assert detail.output_resources[0].name == "D-out-detail"
+
+    def test_no_runs_returns_empty(self, pg_registry):
+        model = _make_model(name="M-empty-runs", location_uri="docker://m-empty:v1")
+        pg_registry.register_resource(model)
+
+        summary = pg_registry.get_model_run_details(model.id)
+        assert summary.model.id == model.id
+        assert summary.runs == []
+
+    def test_multiple_runs(self, pg_registry):
+        model = _make_model(name="M-multi-runs", location_uri="docker://m-multi:v1")
+        pg_registry.register_resource(model)
+        d_in = _make_dataset(name="D-multi-in", location_uri="s3://multi-in")
+        pg_registry.register_resource(d_in)
+
+        run1 = Run(model_id=model.id, input_resource_ids=[d_in.id])
+        run2 = Run(model_id=model.id, input_resource_ids=[d_in.id])
+        pg_registry.create_run(run1)
+        pg_registry.create_run(run2)
+
+        summary = pg_registry.get_model_run_details(model.id)
+        assert len(summary.runs) == 2
+
+    def test_filter_by_status(self, pg_registry):
+        model = _make_model(name="M-status-filter", location_uri="docker://m-sf:v1")
+        pg_registry.register_resource(model)
+
+        run_reg = Run(model_id=model.id, status=RunStatus.REGISTERED)
+        run_run = Run(model_id=model.id, status=RunStatus.RUNNING)
+        pg_registry.create_run(run_reg)
+        pg_registry.create_run(run_run)
+
+        summary = pg_registry.get_model_run_details(model.id, status=RunStatus.RUNNING)
+        assert len(summary.runs) == 1
+        assert summary.runs[0].run.status == RunStatus.RUNNING
+
+    def test_nonexistent_model_raises(self, pg_registry):
+        with pytest.raises(ResourceNotFoundError):
+            pg_registry.get_model_run_details("nonexistent-id")
+
+    def test_shared_input_across_runs(self, pg_registry):
+        """Two runs sharing the same input → resource fetched once, both hydrated."""
+        model = _make_model(name="M-shared", location_uri="docker://m-shared:v1")
+        pg_registry.register_resource(model)
+        shared_ds = _make_dataset(name="D-shared", location_uri="s3://shared")
+        pg_registry.register_resource(shared_ds)
+
+        pg_registry.create_run(Run(model_id=model.id, input_resource_ids=[shared_ds.id]))
+        pg_registry.create_run(Run(model_id=model.id, input_resource_ids=[shared_ds.id]))
+
+        summary = pg_registry.get_model_run_details(model.id)
+        assert len(summary.runs) == 2
+        assert summary.runs[0].input_resources[0].id == shared_ds.id
+        assert summary.runs[1].input_resources[0].id == shared_ds.id
+
+    def test_run_with_no_outputs(self, pg_registry):
+        model = _make_model(name="M-no-out", location_uri="docker://m-no-out:v1")
+        pg_registry.register_resource(model)
+
+        pg_registry.create_run(Run(model_id=model.id))
+
+        summary = pg_registry.get_model_run_details(model.id)
+        assert len(summary.runs) == 1
+        assert summary.runs[0].output_resources == []
+        assert summary.runs[0].input_resources == []
