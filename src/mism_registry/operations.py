@@ -11,6 +11,7 @@ from .errors import ValidationError
 from .protocol import Registry
 from .resource import Resource
 from .run import Run
+from .run_detail import ModelRunDetail, ModelRunSummary
 from .types import Author, IOSpec, Publication, RunEnvironment
 from .validation import (
     check_iospec_handshake,
@@ -372,6 +373,61 @@ def get_lineage(registry: Registry, resource_id: str) -> list[Run]:
 def get_dependents(registry: Registry, resource_id: str) -> list[Run]:
     """Trace forwards: what runs used this resource as input?"""
     return registry.get_dependents(resource_id)
+
+
+def get_model_run_details(
+    registry: Registry,
+    *,
+    model_id: str,
+    status: RunStatus | None = None,
+) -> ModelRunSummary:
+    """Fetch all runs for a model, enriched with full Resource details.
+
+    Returns the model Resource and a list of ModelRunDetail objects, each
+    containing the Run plus hydrated input and output Resources.  Designed
+    to populate a "Model Runs" page in a single call.
+
+    Args:
+        registry: The registry backend to query.
+        model_id: ID of a MODEL or TOOL resource.
+        status: Optional filter — only include runs with this status.
+
+    Raises:
+        ResourceNotFoundError: If *model_id* does not exist.
+        ValidationError: If *model_id* does not point to a MODEL or TOOL.
+    """
+    # 1. Fetch and validate the model resource
+    model = registry.get_resource(model_id)
+    if model.resource_type not in (ResourceType.MODEL, ResourceType.TOOL):
+        raise ValidationError(
+            f"Resource '{model_id}' is a {model.resource_type.value}, not a model or tool"
+        )
+
+    # 2. Fetch all runs for this model (optionally filtered by status)
+    runs = registry.find_runs(model_id=model_id, status=status)
+
+    # 3. Collect all unique resource IDs referenced by the runs
+    all_resource_ids: set[str] = set()
+    for run in runs:
+        all_resource_ids.update(run.input_resource_ids)
+        all_resource_ids.update(run.output_resource_ids)
+
+    # 4. Batch-fetch into a lookup dict (each ID fetched once)
+    resource_cache: dict[str, Resource] = {}
+    for rid in all_resource_ids:
+        resource_cache[rid] = registry.get_resource(rid)
+
+    # 5. Assemble enriched run details
+    details: list[ModelRunDetail] = []
+    for run in runs:
+        detail = ModelRunDetail(
+            run=run,
+            input_resources=[resource_cache[rid] for rid in run.input_resource_ids],
+            output_resources=[resource_cache[rid] for rid in run.output_resource_ids],
+        )
+        details.append(detail)
+
+    return ModelRunSummary(model=model, runs=details)
 
 
 def get_latest_version(registry: Registry, resource_id: str) -> Resource | None:

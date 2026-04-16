@@ -7,6 +7,7 @@ from mism_registry import (
     InMemoryRegistry,
     IOSlot,
     IOSpec,
+    ModelRunSummary,
     Resource,
     ResourceStatus,
     ResourceType,
@@ -21,6 +22,7 @@ from mism_registry import (
     get_dependents,
     get_latest_version,
     get_lineage,
+    get_model_run_details,
     get_version_history,
     prepare_run,
     register_dataset,
@@ -489,3 +491,137 @@ class TestDiscovery:
         )
         deps = get_dependents(registry, sample_dataset.id)
         assert len(deps) == 1
+
+
+class TestGetModelRunDetails:
+    def test_completed_run_with_outputs(
+        self, registry: InMemoryRegistry, sample_dataset, sample_model
+    ):
+        run = prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+        )
+        run = start_run(registry, run_id=run.id)
+        output = Resource(
+            name="Predictions",
+            resource_type=ResourceType.DATASET,
+            location_uri="s3://results/predictions.json",
+            format_tags=["json"],
+        )
+        complete_run(registry, run_id=run.id, output_resources=[output])
+
+        summary = get_model_run_details(registry, model_id=sample_model.id)
+
+        assert isinstance(summary, ModelRunSummary)
+        assert summary.model.id == sample_model.id
+        assert summary.model.name == "Test Model"
+        assert len(summary.runs) == 1
+
+        detail = summary.runs[0]
+        assert detail.run.model_id == sample_model.id
+        assert detail.run.status == RunStatus.COMPLETED
+        assert len(detail.input_resources) == 1
+        assert detail.input_resources[0].id == sample_dataset.id
+        assert detail.input_resources[0].name == "Test Dataset"
+        assert len(detail.output_resources) == 1
+        assert detail.output_resources[0].name == "Predictions"
+
+    def test_no_runs_returns_empty(self, registry: InMemoryRegistry, sample_model):
+        summary = get_model_run_details(registry, model_id=sample_model.id)
+        assert summary.model.id == sample_model.id
+        assert summary.runs == []
+
+    def test_multiple_runs(self, registry: InMemoryRegistry, sample_dataset, sample_model):
+        prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+        )
+        prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+        )
+        summary = get_model_run_details(registry, model_id=sample_model.id)
+        assert len(summary.runs) == 2
+
+    def test_filter_by_status(self, registry: InMemoryRegistry, sample_dataset, sample_model):
+        run1 = prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+        )
+        start_run(registry, run_id=run1.id)
+        # run2 stays REGISTERED
+        prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+        )
+
+        summary = get_model_run_details(
+            registry, model_id=sample_model.id, status=RunStatus.RUNNING
+        )
+        assert len(summary.runs) == 1
+        assert summary.runs[0].run.status == RunStatus.RUNNING
+
+    def test_nonexistent_model_raises(self, registry: InMemoryRegistry):
+        with pytest.raises(ResourceNotFoundError):
+            get_model_run_details(registry, model_id="nonexistent")
+
+    def test_dataset_as_model_raises(self, registry: InMemoryRegistry, sample_dataset):
+        with pytest.raises(ValidationError, match="not a model"):
+            get_model_run_details(registry, model_id=sample_dataset.id)
+
+    def test_superseded_model_allowed(self, registry: InMemoryRegistry):
+        model = register_model(
+            registry,
+            name="Model",
+            location_uri="docker://img:v1",
+            execution_type=ExecutionType.DOCKER,
+            io_spec=IOSpec(),
+        )
+        create_new_version(registry, original_id=model.id, location_uri="docker://img:v2")
+        # model is now SUPERSEDED — should still be queryable
+        summary = get_model_run_details(registry, model_id=model.id)
+        assert summary.model.status == ResourceStatus.SUPERSEDED
+        assert summary.runs == []
+
+    def test_shared_input_hydrated(self, registry: InMemoryRegistry, sample_dataset, sample_model):
+        prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+        )
+        prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+        )
+        summary = get_model_run_details(registry, model_id=sample_model.id)
+        assert len(summary.runs) == 2
+        assert summary.runs[0].input_resources[0].id == sample_dataset.id
+        assert summary.runs[1].input_resources[0].id == sample_dataset.id
+
+    def test_run_with_no_outputs(self, registry: InMemoryRegistry, sample_dataset, sample_model):
+        prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+        )
+        summary = get_model_run_details(registry, model_id=sample_model.id)
+        assert summary.runs[0].output_resources == []
+
+    def test_tool_accepted(self, registry: InMemoryRegistry):
+        tool = register_model(
+            registry,
+            name="Converter Tool",
+            location_uri="docker://tool:v1",
+            execution_type=ExecutionType.BINARY,
+            resource_type=ResourceType.TOOL,
+            io_spec=IOSpec(),
+        )
+        summary = get_model_run_details(registry, model_id=tool.id)
+        assert summary.model.resource_type == ResourceType.TOOL
+        assert summary.runs == []
