@@ -13,7 +13,7 @@ class FieldFilter:
     """A single filter clause: field + operator + value."""
 
     field: str
-    op: str  # "eq", "overlap", "contains", "gte", "lte"
+    op: str  # "eq", "in", "overlap", "contains", "gte", "lte"
     value: Any  # str, list[str], datetime string, etc.
 
 
@@ -53,10 +53,10 @@ class SearchResult:
 # Maps field name → (column_kind, allowed_ops)
 # column_kind: "scalar" | "array" | "datetime"
 FILTERABLE_FIELDS: dict[str, tuple[str, frozenset[str]]] = {
-    "resource_type": ("scalar", frozenset({"eq"})),
-    "status": ("scalar", frozenset({"eq"})),
-    "execution_type": ("scalar", frozenset({"eq"})),
-    "owner": ("scalar", frozenset({"eq"})),
+    "resource_type": ("scalar", frozenset({"eq", "in"})),
+    "status": ("scalar", frozenset({"eq", "in"})),
+    "execution_type": ("scalar", frozenset({"eq", "in"})),
+    "owner": ("scalar", frozenset({"eq", "in"})),
     "organisms": ("array", frozenset({"overlap", "contains"})),
     "domains": ("array", frozenset({"overlap", "contains"})),
     "modeling_scales": ("array", frozenset({"overlap", "contains"})),

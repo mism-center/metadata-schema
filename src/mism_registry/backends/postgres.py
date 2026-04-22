@@ -575,6 +575,9 @@ class PostgresRegistry:
 
             if f.op == "eq":
                 conditions.append(col == value)
+            elif f.op == "in":
+                val = value if isinstance(value, list) else [value]
+                conditions.append(col.in_(val))
             elif f.op == "overlap":
                 val = value if isinstance(value, list) else [value]
                 conditions.append(col.overlap(val))
