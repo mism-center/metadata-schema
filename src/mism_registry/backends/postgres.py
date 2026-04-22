@@ -404,6 +404,21 @@ def run_from_db(model: RunModel) -> Run:
 _MAX_VERSION_DEPTH = 100
 
 
+def _coerce_filter_value(value: Any, kind: str) -> Any:
+    """Parse string filter values to the correct Python type for datetime fields.
+
+    Postgres refuses to compare timestamptz columns against VARCHAR params.
+    Accepted formats: ISO date ("2026-04-14") or ISO datetime ("2026-04-14T00:00:00Z").
+    """
+    if kind != "datetime" or not isinstance(value, str):
+        return value
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        # Fall through and let the DB raise a useful error.
+        return value
+
+
 class PostgresRegistry:
     """Postgres-backed Registry implementation.
 
@@ -547,6 +562,7 @@ class PostgresRegistry:
 
     def _build_filter_conditions(self, filters: tuple) -> list:
         """Convert FieldFilter tuples into SQLAlchemy WHERE conditions."""
+        from mism_registry.search import FILTERABLE_FIELDS
 
         conditions: list = []
         for f in filters:
@@ -554,24 +570,21 @@ class PostgresRegistry:
             if col is None:
                 continue
 
+            field_kind = FILTERABLE_FIELDS.get(f.field, ("scalar", frozenset()))[0]
+            value = _coerce_filter_value(f.value, field_kind)
+
             if f.op == "eq":
-                conditions.append(col == f.value)
+                conditions.append(col == value)
             elif f.op == "overlap":
-                val = f.value if isinstance(f.value, list) else [f.value]
+                val = value if isinstance(value, list) else [value]
                 conditions.append(col.overlap(val))
             elif f.op == "contains":
-                val = f.value if isinstance(f.value, list) else [f.value]
+                val = value if isinstance(value, list) else [value]
                 conditions.append(col.contains(val))
             elif f.op == "gte":
-                if isinstance(f.value, str):
-                    conditions.append(col >= f.value)
-                else:
-                    conditions.append(col >= f.value)
+                conditions.append(col >= value)
             elif f.op == "lte":
-                if isinstance(f.value, str):
-                    conditions.append(col <= f.value)
-                else:
-                    conditions.append(col <= f.value)
+                conditions.append(col <= value)
         return conditions
 
     def _run_aggregation(self, field_name: str, conditions: list) -> list:
