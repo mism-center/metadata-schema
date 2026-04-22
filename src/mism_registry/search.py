@@ -74,6 +74,8 @@ AGGREGATABLE_FIELDS: frozenset[str] = frozenset(
         "status",
         "execution_type",
         "owner",
+        "organization",
+        "license",
         "organisms",
         "domains",
         "modeling_scales",
