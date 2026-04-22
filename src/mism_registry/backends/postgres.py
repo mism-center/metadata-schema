@@ -210,6 +210,8 @@ _FILTER_COLUMN_MAP: dict[str, Any] = {
     "status": ResourceModel.status,
     "execution_type": ResourceModel.execution_type,
     "owner": ResourceModel.owner,
+    "organization": ResourceModel.organization,
+    "license": ResourceModel.license,
     "organisms": ResourceModel.organisms,
     "domains": ResourceModel.domains,
     "modeling_scales": ResourceModel.modeling_scales,

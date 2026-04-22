@@ -57,6 +57,8 @@ FILTERABLE_FIELDS: dict[str, tuple[str, frozenset[str]]] = {
     "status": ("scalar", frozenset({"eq", "in"})),
     "execution_type": ("scalar", frozenset({"eq", "in"})),
     "owner": ("scalar", frozenset({"eq", "in"})),
+    "organization": ("scalar", frozenset({"eq", "in"})),
+    "license": ("scalar", frozenset({"eq", "in"})),
     "organisms": ("array", frozenset({"overlap", "contains"})),
     "domains": ("array", frozenset({"overlap", "contains"})),
     "modeling_scales": ("array", frozenset({"overlap", "contains"})),
