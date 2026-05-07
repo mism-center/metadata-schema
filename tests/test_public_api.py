@@ -30,6 +30,8 @@ class TestPublicAPI:
         assert mism_registry.RunEnvironment is not None
         assert mism_registry.Resource is not None
         assert mism_registry.Run is not None
+        assert mism_registry.ModelRunDetail is not None
+        assert mism_registry.ModelRunSummary is not None
 
     def test_all_errors_importable(self):
         assert issubclass(mism_registry.ResourceNotFoundError, mism_registry.MismRegistryError)
@@ -57,6 +59,7 @@ class TestPublicAPI:
             "get_dependents",
             "get_latest_version",
             "get_version_history",
+            "get_model_run_details",
         ]
         for op in ops:
             assert callable(getattr(mism_registry, op)), f"{op} is not callable"

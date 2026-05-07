@@ -11,6 +11,7 @@ from .errors import ValidationError
 from .protocol import Registry
 from .resource import Resource
 from .run import Run
+from .run_detail import ModelRunSummary
 from .types import Author, IOSpec, Publication, RunEnvironment
 from .validation import (
     check_iospec_handshake,
@@ -372,6 +373,37 @@ def get_lineage(registry: Registry, resource_id: str) -> list[Run]:
 def get_dependents(registry: Registry, resource_id: str) -> list[Run]:
     """Trace forwards: what runs used this resource as input?"""
     return registry.get_dependents(resource_id)
+
+
+def get_model_run_details(
+    registry: Registry,
+    *,
+    model_id: str,
+    status: RunStatus | None = None,
+) -> ModelRunSummary:
+    """Fetch all runs for a model, enriched with full Resource details.
+
+    Returns the model Resource and a list of ModelRunDetail objects, each
+    containing the Run plus hydrated input and output Resources.  Designed
+    to populate a "Model Runs" page in a single call.
+
+    Args:
+        registry: The registry backend to query.
+        model_id: ID of a MODEL or TOOL resource.
+        status: Optional filter — only include runs with this status.
+
+    Raises:
+        ResourceNotFoundError: If *model_id* does not exist.
+        ValidationError: If *model_id* does not point to a MODEL or TOOL.
+    """
+    # Validate the model is a MODEL or TOOL before delegating to the backend
+    model = registry.get_resource(model_id)
+    if model.resource_type not in (ResourceType.MODEL, ResourceType.TOOL):
+        raise ValidationError(
+            f"Resource '{model_id}' is a {model.resource_type.value}, not a model or tool"
+        )
+
+    return registry.get_model_run_details(model_id, status=status)
 
 
 def get_latest_version(registry: Registry, resource_id: str) -> Resource | None:

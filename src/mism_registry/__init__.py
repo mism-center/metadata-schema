@@ -22,6 +22,7 @@ from .operations import (
     get_dependents,
     get_latest_version,
     get_lineage,
+    get_model_run_details,
     get_version_history,
     prepare_run,
     register_dataset,
@@ -31,6 +32,7 @@ from .operations import (
 from .protocol import Registry
 from .resource import Resource
 from .run import Run
+from .run_detail import ModelRunDetail, ModelRunSummary
 from .search import (
     AGGREGATABLE_FIELDS,
     FILTERABLE_FIELDS,
@@ -56,6 +58,8 @@ __all__ = [
     "RunEnvironment",
     "Resource",
     "Run",
+    "ModelRunDetail",
+    "ModelRunSummary",
     # Errors
     "MismRegistryError",
     "ResourceNotFoundError",
@@ -89,4 +93,5 @@ __all__ = [
     "get_dependents",
     "get_latest_version",
     "get_version_history",
+    "get_model_run_details",
 ]

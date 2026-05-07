@@ -55,6 +55,7 @@ from mism_registry.errors import (
 )
 from mism_registry.resource import Resource
 from mism_registry.run import Run
+from mism_registry.run_detail import ModelRunDetail, ModelRunSummary
 from mism_registry.search import SearchQuery, SearchResult
 from mism_registry.types import Author, IOSlot, IOSpec, Publication, RunEnvironment
 
@@ -209,6 +210,8 @@ _FILTER_COLUMN_MAP: dict[str, Any] = {
     "status": ResourceModel.status,
     "execution_type": ResourceModel.execution_type,
     "owner": ResourceModel.owner,
+    "organization": ResourceModel.organization,
+    "license": ResourceModel.license,
     "organisms": ResourceModel.organisms,
     "domains": ResourceModel.domains,
     "modeling_scales": ResourceModel.modeling_scales,
@@ -403,6 +406,21 @@ def run_from_db(model: RunModel) -> Run:
 _MAX_VERSION_DEPTH = 100
 
 
+def _coerce_filter_value(value: Any, kind: str) -> Any:
+    """Parse string filter values to the correct Python type for datetime fields.
+
+    Postgres refuses to compare timestamptz columns against VARCHAR params.
+    Accepted formats: ISO date ("2026-04-14") or ISO datetime ("2026-04-14T00:00:00Z").
+    """
+    if kind != "datetime" or not isinstance(value, str):
+        return value
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        # Fall through and let the DB raise a useful error.
+        return value
+
+
 class PostgresRegistry:
     """Postgres-backed Registry implementation.
 
@@ -546,6 +564,7 @@ class PostgresRegistry:
 
     def _build_filter_conditions(self, filters: tuple) -> list:
         """Convert FieldFilter tuples into SQLAlchemy WHERE conditions."""
+        from mism_registry.search import FILTERABLE_FIELDS
 
         conditions: list = []
         for f in filters:
@@ -553,24 +572,24 @@ class PostgresRegistry:
             if col is None:
                 continue
 
+            field_kind = FILTERABLE_FIELDS.get(f.field, ("scalar", frozenset()))[0]
+            value = _coerce_filter_value(f.value, field_kind)
+
             if f.op == "eq":
-                conditions.append(col == f.value)
+                conditions.append(col == value)
+            elif f.op == "in":
+                val = value if isinstance(value, list) else [value]
+                conditions.append(col.in_(val))
             elif f.op == "overlap":
-                val = f.value if isinstance(f.value, list) else [f.value]
+                val = value if isinstance(value, list) else [value]
                 conditions.append(col.overlap(val))
             elif f.op == "contains":
-                val = f.value if isinstance(f.value, list) else [f.value]
+                val = value if isinstance(value, list) else [value]
                 conditions.append(col.contains(val))
             elif f.op == "gte":
-                if isinstance(f.value, str):
-                    conditions.append(col >= f.value)
-                else:
-                    conditions.append(col >= f.value)
+                conditions.append(col >= value)
             elif f.op == "lte":
-                if isinstance(f.value, str):
-                    conditions.append(col <= f.value)
-                else:
-                    conditions.append(col <= f.value)
+                conditions.append(col <= value)
         return conditions
 
     def _run_aggregation(self, field_name: str, conditions: list) -> list:
@@ -706,6 +725,56 @@ class PostgresRegistry:
         stmt = select(RunModel).where(RunModel.input_resource_ids.contains([resource_id]))
         results = self._session.execute(stmt).scalars().all()
         return [run_from_db(m) for m in results]
+
+    def get_model_run_details(
+        self,
+        model_id: str,
+        *,
+        status: RunStatus | None = None,
+    ) -> ModelRunSummary:
+        """Fetch all runs for a model with hydrated input/output Resources.
+
+        Optimized for Postgres: fetches the model in one query, all runs
+        in a second, and all referenced resources in a single batch
+        ``WHERE id IN (...)`` query instead of N+1 calls.
+        """
+        # 1. Fetch the model resource
+        model_row = self._session.get(ResourceModel, model_id)
+        if model_row is None:
+            raise ResourceNotFoundError(model_id)
+        model = resource_from_db(model_row)
+
+        # 2. Fetch all runs for this model
+        run_stmt = select(RunModel).where(RunModel.model_id == model_id)
+        if status is not None:
+            run_stmt = run_stmt.where(RunModel.status == status)
+        run_rows = self._session.execute(run_stmt).scalars().all()
+        runs = [run_from_db(r) for r in run_rows]
+
+        # 3. Collect all unique resource IDs referenced by runs
+        all_resource_ids: set[str] = set()
+        for run in runs:
+            all_resource_ids.update(run.input_resource_ids)
+            all_resource_ids.update(run.output_resource_ids)
+
+        # 4. Batch-fetch all resources in one query
+        resource_cache: dict[str, Resource] = {}
+        if all_resource_ids:
+            res_stmt = select(ResourceModel).where(ResourceModel.id.in_(all_resource_ids))
+            res_rows = self._session.execute(res_stmt).scalars().all()
+            for row in res_rows:
+                resource_cache[row.id] = resource_from_db(row)
+
+        # 5. Assemble enriched run details
+        details = [
+            ModelRunDetail(
+                run=run,
+                input_resources=[resource_cache[rid] for rid in run.input_resource_ids],
+                output_resources=[resource_cache[rid] for rid in run.output_resource_ids],
+            )
+            for run in runs
+        ]
+        return ModelRunSummary(model=model, runs=details)
 
     # ── Versioning ───────────────────────────────────────────────────
 

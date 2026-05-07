@@ -8,6 +8,7 @@ from typing import Protocol, runtime_checkable
 from .enums import ResourceStatus, ResourceType, RunStatus
 from .resource import Resource
 from .run import Run
+from .run_detail import ModelRunSummary
 
 
 @runtime_checkable
@@ -55,6 +56,13 @@ class Registry(Protocol):
     def get_lineage(self, resource_id: str) -> list[Run]: ...
 
     def get_dependents(self, resource_id: str) -> list[Run]: ...
+
+    def get_model_run_details(
+        self,
+        model_id: str,
+        *,
+        status: RunStatus | None = None,
+    ) -> ModelRunSummary: ...
 
     def get_latest_version(self, resource_id: str) -> Resource | None: ...
 
