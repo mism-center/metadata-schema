@@ -26,11 +26,17 @@ class TestExecutionType:
         expected = {
             "docker",
             "conda",
+            "pip",
             "python",
             "r",
             "binary",
             "huggingface",
             "notebook",
+            "singularity",
+            "nextflow",
+            "snakemake",
+            "jupyter",
+            "native",
             "other",
         }
         assert {e.value for e in ExecutionType} == expected

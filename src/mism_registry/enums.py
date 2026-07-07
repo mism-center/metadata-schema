@@ -12,11 +12,18 @@ class ResourceType(str, Enum):
 class ExecutionType(str, Enum):
     DOCKER = "docker"
     CONDA = "conda"
+    PIP = "pip"
     PYTHON = "python"
     R = "r"
     BINARY = "binary"
     HUGGINGFACE = "huggingface"
     NOTEBOOK = "notebook"
+    # schema.md execution.environment_kind additions
+    SINGULARITY = "singularity"
+    NEXTFLOW = "nextflow"
+    SNAKEMAKE = "snakemake"
+    JUPYTER = "jupyter"
+    NATIVE = "native"
     OTHER = "other"
 
 

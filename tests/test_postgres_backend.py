@@ -197,6 +197,71 @@ class TestRegisterAndRetrieve:
         assert retrieved.license == "MIT"
         assert retrieved.metadata["framework"] == "pytorch"
 
+    def test_register_model_with_annotation_fields(self, pg_registry):
+        """schema.md Section A/B/C fields survive a full DB round-trip."""
+        from mism_registry.types import (
+            Argument,
+            Compute,
+            Container,
+            Contact,
+            DataInput,
+            Dependency,
+            EntryPoint,
+            ExperimentProtocol,
+            IODetail,
+            Output,
+            Parameter,
+            RelatedResource,
+            TestSpec,
+        )
+
+        r = _make_model(
+            execution_type=ExecutionType.SINGULARITY,
+            short_description="short",
+            model_class=["agent-based model"],
+            formalism=["ODE"],
+            determinism="stochastic",
+            time_dynamics="continuous",
+            spatial="lattice",
+            multiscale=True,
+            infectious_agents=["SARS-CoV-2"],
+            health_conditions=["COVID-19"],
+            biological_processes=["viral entry"],
+            molecular_entities=["ATP"],
+            proteins_genes=["ACE2"],
+            contacts=[Contact(name="Carol", role="maintainer", email="c@x.org")],
+            related_resources=[
+                RelatedResource(qualifier="bqmodel:isDerivedFrom", scheme="doi", value="10.9")
+            ],
+            execution_status="characterized",
+            language_name="Python",
+            language_version=">=3.10",
+            execution_notes="note",
+            dependencies=[Dependency(name="numpy", version_constraint=">=1.24")],
+            containers=[Container(kind="docker", file="Dockerfile")],
+            compute=Compute(cpu_cores=8, gpu_required=False, parallelism="MPI"),
+            entry_points=[
+                EntryPoint(
+                    command="python run.py",
+                    purpose="main",
+                    arguments=(Argument(name="--dur", default=10.0),),
+                )
+            ],
+            tests=TestSpec(framework="pytest", invocation="pytest tests/"),
+            io=IODetail(
+                parameters=(Parameter(name="k_run", default_value=1.0, unit="per second"),),
+                data_inputs=(DataInput(name="field.csv", format="CSV", required=True),),
+                outputs=(Output(name="traj", unit="m", format="CSV"),),
+                experiment_protocol=ExperimentProtocol(
+                    duration=10.0, duration_unit="s", observables=("x", "y")
+                ),
+            ),
+        )
+        pg_registry.register_resource(r)
+        got = pg_registry.get_resource(r.id)
+
+        assert got == r  # full-fidelity round-trip
+
     def test_get_nonexistent_raises(self, pg_registry):
         with pytest.raises(ResourceNotFoundError):
             pg_registry.get_resource("nonexistent-id")
