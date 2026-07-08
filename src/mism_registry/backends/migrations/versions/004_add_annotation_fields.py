@@ -62,12 +62,8 @@ def upgrade() -> None:
     op.add_column("resources", sa.Column("language_name", sa.String(100), server_default=""))
     op.add_column("resources", sa.Column("language_version", sa.String(100), server_default=""))
     op.add_column("resources", sa.Column("execution_notes", sa.Text(), server_default=""))
-    op.add_column(
-        "resources", sa.Column("determinism", sa.String(50), server_default="unknown")
-    )
-    op.add_column(
-        "resources", sa.Column("time_dynamics", sa.String(50), server_default="unknown")
-    )
+    op.add_column("resources", sa.Column("determinism", sa.String(50), server_default="unknown"))
+    op.add_column("resources", sa.Column("time_dynamics", sa.String(50), server_default="unknown"))
     op.add_column("resources", sa.Column("spatial", sa.String(50), server_default="unknown"))
     op.add_column("resources", sa.Column("multiscale", sa.Boolean(), nullable=True))
 

@@ -642,6 +642,9 @@ uv run ruff format src/ tests/
 
 ## Further Reading
 
+For a consumer-facing API reference (import surface, Resource fields, value
+types, operations, gotchas) — see **[docs/library-usage.md](docs/library-usage.md)**.
+
 For a longer walkthrough — full end-to-end pipeline, lineage tracing
 patterns, testing recipes — see **[docs/guide.md](docs/guide.md)**.
 
