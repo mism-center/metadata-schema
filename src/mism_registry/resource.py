@@ -7,7 +7,12 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Any
 
-from .enums import ExecutionType, ResourceStatus, ResourceType
+from .enums import (
+    ExecutionType,
+    ResourceRegistrationStatus,
+    ResourceType,
+    ResourceVersionStatus,
+)
 from .types import (
     Author,
     Compute,
@@ -35,7 +40,12 @@ class Resource:
     short_description: str = ""  # schema.md model.short_description
     description: str = ""  # maps to schema.md model.long_description
     version: str = ""
-    status: ResourceStatus = ResourceStatus.ACTIVE
+    # Version lifecycle (is this the current version?)
+    version_status: ResourceVersionStatus = ResourceVersionStatus.ACTIVE
+    # Registration workflow (upload -> annotate -> review -> approve).
+    # Defaults to APPROVED so programmatic register_* is immediately usable;
+    # the UX/agent flow sets DRAFT explicitly.
+    registration_status: ResourceRegistrationStatus = ResourceRegistrationStatus.APPROVED
     new_version_of: str = ""
     superseded_by: str = ""
 
@@ -49,7 +59,7 @@ class Resource:
     funding: list[str] = dataclasses.field(default_factory=list)  # ponytail: typed Funding later
 
     # Scientific context
-    modeling_scales: list[str] = dataclasses.field(default_factory=list)
+    model_scales: list[str] = dataclasses.field(default_factory=list)
     organisms: list[str] = dataclasses.field(default_factory=list)  # schema biology.species
     domains: list[str] = dataclasses.field(default_factory=list)  # schema biology.topic_category
     date_published: date | None = None

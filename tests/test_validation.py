@@ -7,8 +7,9 @@ from mism_registry import (
     IOSlot,
     IOSpec,
     Resource,
-    ResourceStatus,
+    ResourceRegistrationStatus,
     ResourceType,
+    ResourceVersionStatus,
     RunStatus,
 )
 from mism_registry.errors import (
@@ -20,10 +21,14 @@ from mism_registry.validation import (
     check_iospec_handshake,
     normalize_tags,
     validate_execution_fields,
+    validate_registration_approved,
+    validate_registration_status_transition,
     validate_resource_is_active,
     validate_resource_required_fields,
     validate_run_status_transition,
 )
+
+_RS = ResourceRegistrationStatus
 
 
 class TestValidateResourceRequiredFields:
@@ -99,7 +104,7 @@ class TestValidateResourceIsActive:
             name="test",
             resource_type=ResourceType.DATASET,
             location_uri="s3://x",
-            status=ResourceStatus.SUPERSEDED,
+            version_status=ResourceVersionStatus.SUPERSEDED,
         )
         with pytest.raises(ValidationError, match="active"):
             validate_resource_is_active(r)
@@ -109,10 +114,69 @@ class TestValidateResourceIsActive:
             name="test",
             resource_type=ResourceType.DATASET,
             location_uri="s3://x",
-            status=ResourceStatus.ARCHIVED,
+            version_status=ResourceVersionStatus.ARCHIVED,
         )
         with pytest.raises(ValidationError, match="active"):
             validate_resource_is_active(r)
+
+
+class TestValidateRegistrationApproved:
+    def _resource(self, reg_status):
+        return Resource(
+            name="test",
+            resource_type=ResourceType.MODEL,
+            location_uri="s3://x",
+            registration_status=reg_status,
+        )
+
+    def test_approved_passes(self):
+        validate_registration_approved(self._resource(ResourceRegistrationStatus.APPROVED))
+
+    @pytest.mark.parametrize(
+        "reg_status",
+        [
+            ResourceRegistrationStatus.DRAFT,
+            ResourceRegistrationStatus.ANNOTATING,
+            ResourceRegistrationStatus.ANNOTATION_FAILED,
+            ResourceRegistrationStatus.PENDING_REVIEW,
+            ResourceRegistrationStatus.REJECTED,
+        ],
+    )
+    def test_non_approved_raises(self, reg_status):
+        with pytest.raises(ValidationError, match="approved"):
+            validate_registration_approved(self._resource(reg_status))
+
+
+class TestRegistrationStatusTransition:
+    @pytest.mark.parametrize(
+        "current,target",
+        [
+            (_RS.DRAFT, _RS.ANNOTATING),
+            (_RS.ANNOTATING, _RS.PENDING_REVIEW),
+            (_RS.ANNOTATING, _RS.ANNOTATION_FAILED),
+            (_RS.ANNOTATION_FAILED, _RS.ANNOTATING),
+            (_RS.PENDING_REVIEW, _RS.APPROVED),
+            (_RS.PENDING_REVIEW, _RS.REJECTED),
+            (_RS.REJECTED, _RS.ANNOTATING),
+            (_RS.REJECTED, _RS.PENDING_REVIEW),
+        ],
+    )
+    def test_legal_transitions(self, current, target):
+        validate_registration_status_transition(current, target)  # no raise
+
+    @pytest.mark.parametrize(
+        "current,target",
+        [
+            (_RS.DRAFT, _RS.APPROVED),  # can't skip the workflow
+            (_RS.APPROVED, _RS.DRAFT),  # terminal
+            (_RS.APPROVED, _RS.PENDING_REVIEW),  # terminal
+            (_RS.PENDING_REVIEW, _RS.ANNOTATING),  # no going back to annotating from review
+            (_RS.DRAFT, _RS.PENDING_REVIEW),  # must annotate first
+        ],
+    )
+    def test_illegal_transitions(self, current, target):
+        with pytest.raises(InvalidStateTransitionError):
+            validate_registration_status_transition(current, target)
 
 
 class TestNormalizeTags:

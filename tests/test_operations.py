@@ -9,8 +9,9 @@ from mism_registry import (
     IOSpec,
     ModelRunSummary,
     Resource,
-    ResourceStatus,
+    ResourceRegistrationStatus,
     ResourceType,
+    ResourceVersionStatus,
     RunEnvironment,
     RunStatus,
     cancel_run,
@@ -27,6 +28,7 @@ from mism_registry import (
     prepare_run,
     register_dataset,
     register_model,
+    set_registration_status,
     start_run,
 )
 from mism_registry.errors import (
@@ -153,14 +155,14 @@ class TestCreateNewVersion:
         assert new.location_uri == "s3://v2"
         assert new.version == "2.0"
         assert new.new_version_of == original.id
-        assert new.status == ResourceStatus.ACTIVE
+        assert new.version_status == ResourceVersionStatus.ACTIVE
         # Carries forward inherited fields
         assert new.owner == "alice"
         assert new.organisms == ["SARS-CoV-2"]
 
         # Original is now superseded
         updated_original = registry.get_resource(original.id)
-        assert updated_original.status == ResourceStatus.SUPERSEDED
+        assert updated_original.version_status == ResourceVersionStatus.SUPERSEDED
         assert updated_original.superseded_by == new.id
 
     def test_inherits_metadata(self, registry: InMemoryRegistry):
@@ -280,6 +282,17 @@ class TestPrepareRun:
             prepare_run(
                 registry,
                 model_id=sample_dataset.id,
+                input_resource_ids=[],
+            )
+
+    def test_unapproved_model_rejected(self, registry: InMemoryRegistry, sample_model):
+        # Model still mid-registration (agent building metadata-package) — not runnable.
+        sample_model.registration_status = ResourceRegistrationStatus.PENDING_REVIEW
+        registry.update_resource(sample_model)
+        with pytest.raises(ValidationError, match="approved"):
+            prepare_run(
+                registry,
+                model_id=sample_model.id,
                 input_resource_ids=[],
             )
 
@@ -585,7 +598,7 @@ class TestGetModelRunDetails:
         create_new_version(registry, original_id=model.id, location_uri="docker://img:v2")
         # model is now SUPERSEDED — should still be queryable
         summary = get_model_run_details(registry, model_id=model.id)
-        assert summary.model.status == ResourceStatus.SUPERSEDED
+        assert summary.model.version_status == ResourceVersionStatus.SUPERSEDED
         assert summary.runs == []
 
     def test_shared_input_hydrated(self, registry: InMemoryRegistry, sample_dataset, sample_model):
@@ -625,3 +638,34 @@ class TestGetModelRunDetails:
         summary = get_model_run_details(registry, model_id=tool.id)
         assert summary.model.resource_type == ResourceType.TOOL
         assert summary.runs == []
+
+
+class TestSetRegistrationStatus:
+    def _draft_model(self, registry: InMemoryRegistry) -> Resource:
+        model = Resource(
+            name="draft-model",
+            resource_type=ResourceType.MODEL,
+            location_uri="s3://uploads/model.zip",
+            execution_type=ExecutionType.PYTHON,
+            registration_status=ResourceRegistrationStatus.DRAFT,
+        )
+        return registry.register_resource(model)
+
+    def test_walk_happy_path(self, registry: InMemoryRegistry):
+        model = self._draft_model(registry)
+        for target in (
+            ResourceRegistrationStatus.ANNOTATING,
+            ResourceRegistrationStatus.PENDING_REVIEW,
+            ResourceRegistrationStatus.APPROVED,
+        ):
+            updated = set_registration_status(registry, resource_id=model.id, target=target)
+            assert updated.registration_status == target
+
+    def test_illegal_transition_raises(self, registry: InMemoryRegistry):
+        model = self._draft_model(registry)  # DRAFT
+        with pytest.raises(InvalidStateTransitionError):
+            set_registration_status(
+                registry,
+                resource_id=model.id,
+                target=ResourceRegistrationStatus.APPROVED,  # can't skip the workflow
+            )

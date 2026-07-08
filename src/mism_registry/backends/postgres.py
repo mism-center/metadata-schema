@@ -48,7 +48,13 @@ from sqlalchemy.orm import (
     sessionmaker,
 )
 
-from mism_registry.enums import ExecutionType, ResourceStatus, ResourceType, RunStatus
+from mism_registry.enums import (
+    ExecutionType,
+    ResourceRegistrationStatus,
+    ResourceType,
+    ResourceVersionStatus,
+    RunStatus,
+)
 from mism_registry.errors import (
     DuplicateResourceError,
     ResourceNotFoundError,
@@ -62,8 +68,8 @@ from mism_registry.types import (
     Argument,
     Author,
     Compute,
-    Container,
     Contact,
+    Container,
     DataInput,
     Dependency,
     EntryPoint,
@@ -108,14 +114,23 @@ class ResourceModel(Base):
     short_description: Mapped[str] = mapped_column(Text, default="")
     description: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[str] = mapped_column(String(100), default="")
-    status: Mapped[ResourceStatus] = mapped_column(
+    version_status: Mapped[ResourceVersionStatus] = mapped_column(
         Enum(
-            ResourceStatus,
+            ResourceVersionStatus,
             values_callable=_enum_values,
             name="resourcestatus",
             create_type=False,
         ),
-        default=ResourceStatus.ACTIVE,
+        default=ResourceVersionStatus.ACTIVE,
+    )
+    registration_status: Mapped[ResourceRegistrationStatus] = mapped_column(
+        Enum(
+            ResourceRegistrationStatus,
+            values_callable=_enum_values,
+            name="resourceregistrationstatus",
+            create_type=False,
+        ),
+        default=ResourceRegistrationStatus.APPROVED,
     )
     new_version_of: Mapped[str | None] = mapped_column(
         String(36),
@@ -138,7 +153,7 @@ class ResourceModel(Base):
     funding: Mapped[Any] = mapped_column(JSONB, default=list)
 
     # Scientific context
-    modeling_scales: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    model_scales: Mapped[list] = mapped_column(ARRAY(String), default=list)
     organisms: Mapped[list] = mapped_column(ARRAY(String), default=list)
     domains: Mapped[list] = mapped_column(ARRAY(String), default=list)
     date_published: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -205,11 +220,12 @@ class ResourceModel(Base):
 
     __table_args__ = (
         Index("ix_resources_resource_type", "resource_type"),
-        Index("ix_resources_status", "status"),
+        Index("ix_resources_version_status", "version_status"),
+        Index("ix_resources_registration_status", "registration_status"),
         Index("ix_resources_owner", "owner"),
         Index("ix_resources_format_tags", "format_tags", postgresql_using="gin"),
         Index("ix_resources_organisms", "organisms", postgresql_using="gin"),
-        Index("ix_resources_modeling_scales", "modeling_scales", postgresql_using="gin"),
+        Index("ix_resources_model_scales", "model_scales", postgresql_using="gin"),
         Index("ix_resources_domains", "domains", postgresql_using="gin"),
     )
 
@@ -260,14 +276,15 @@ class RunModel(Base):
 
 _FILTER_COLUMN_MAP: dict[str, Any] = {
     "resource_type": ResourceModel.resource_type,
-    "status": ResourceModel.status,
+    "version_status": ResourceModel.version_status,
+    "registration_status": ResourceModel.registration_status,
     "execution_type": ResourceModel.execution_type,
     "owner": ResourceModel.owner,
     "organization": ResourceModel.organization,
     "license": ResourceModel.license,
     "organisms": ResourceModel.organisms,
     "domains": ResourceModel.domains,
-    "modeling_scales": ResourceModel.modeling_scales,
+    "model_scales": ResourceModel.model_scales,
     "format_tags": ResourceModel.format_tags,
     "created_at": ResourceModel.created_at,
     "updated_at": ResourceModel.updated_at,
@@ -278,7 +295,7 @@ _ARRAY_FIELDS: frozenset[str] = frozenset(
     {
         "organisms",
         "domains",
-        "modeling_scales",
+        "model_scales",
         "format_tags",
     }
 )
@@ -416,7 +433,8 @@ def resource_to_db(resource: Resource) -> ResourceModel:
         short_description=resource.short_description,
         description=resource.description,
         version=resource.version,
-        status=resource.status,
+        version_status=resource.version_status,
+        registration_status=resource.registration_status,
         new_version_of=resource.new_version_of or None,
         superseded_by=resource.superseded_by or None,
         authors=_serialize_authors(resource.authors),
@@ -426,7 +444,7 @@ def resource_to_db(resource: Resource) -> ResourceModel:
         publications=_serialize_publications(resource.publications),
         related_resources=_ser_list(resource.related_resources),
         funding=resource.funding,
-        modeling_scales=resource.modeling_scales,
+        model_scales=resource.model_scales,
         organisms=resource.organisms,
         domains=resource.domains,
         date_published=resource.date_published,
@@ -476,7 +494,8 @@ def resource_from_db(model: ResourceModel) -> Resource:
         short_description=model.short_description,
         description=model.description,
         version=model.version,
-        status=model.status,
+        version_status=model.version_status,
+        registration_status=model.registration_status,
         new_version_of=model.new_version_of or "",
         superseded_by=model.superseded_by or "",
         authors=_deserialize_authors(model.authors),
@@ -486,7 +505,7 @@ def resource_from_db(model: ResourceModel) -> Resource:
         publications=_deserialize_publications(model.publications),
         related_resources=_deser_related(model.related_resources),
         funding=model.funding or [],
-        modeling_scales=model.modeling_scales or [],
+        model_scales=model.model_scales or [],
         organisms=model.organisms or [],
         domains=model.domains or [],
         date_published=model.date_published,
@@ -629,7 +648,7 @@ class PostgresRegistry:
         organisms: list[str] | None = None,
         scales: list[str] | None = None,
         domains: list[str] | None = None,
-        status: ResourceStatus | None = None,
+        version_status: ResourceVersionStatus | None = None,
         date_published_after: date | None = None,
         date_published_before: date | None = None,
     ) -> list[Resource]:
@@ -647,11 +666,11 @@ class PostgresRegistry:
             # Resource must share at least one organism (&& operator)
             stmt = stmt.where(ResourceModel.organisms.overlap(organisms))
         if scales is not None:
-            stmt = stmt.where(ResourceModel.modeling_scales.overlap(scales))
+            stmt = stmt.where(ResourceModel.model_scales.overlap(scales))
         if domains is not None:
             stmt = stmt.where(ResourceModel.domains.overlap(domains))
-        if status is not None:
-            stmt = stmt.where(ResourceModel.status == status)
+        if version_status is not None:
+            stmt = stmt.where(ResourceModel.version_status == version_status)
         if date_published_after is not None:
             stmt = stmt.where(ResourceModel.date_published >= date_published_after)
         if date_published_before is not None:
@@ -805,7 +824,8 @@ class PostgresRegistry:
         model.short_description = resource.short_description
         model.description = resource.description
         model.version = resource.version
-        model.status = resource.status
+        model.version_status = resource.version_status
+        model.registration_status = resource.registration_status
         model.new_version_of = resource.new_version_of or None
         model.superseded_by = resource.superseded_by or None
         model.authors = _serialize_authors(resource.authors)
@@ -815,7 +835,7 @@ class PostgresRegistry:
         model.publications = _serialize_publications(resource.publications)
         model.related_resources = _ser_list(resource.related_resources)
         model.funding = resource.funding
-        model.modeling_scales = resource.modeling_scales
+        model.model_scales = resource.model_scales
         model.organisms = resource.organisms
         model.domains = resource.domains
         model.date_published = resource.date_published

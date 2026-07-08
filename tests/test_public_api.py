@@ -19,7 +19,7 @@ class TestPublicAPI:
     def test_all_enums_importable(self):
         assert mism_registry.ResourceType.DATASET is not None
         assert mism_registry.ExecutionType.DOCKER is not None
-        assert mism_registry.ResourceStatus.ACTIVE is not None
+        assert mism_registry.ResourceVersionStatus.ACTIVE is not None
         assert mism_registry.RunStatus.REGISTERED is not None
 
     def test_all_types_importable(self):
