@@ -359,6 +359,12 @@ class TestPrepareRun:
             execution_type=ExecutionType.DOCKER,
             io_spec=IOSpec(),
         )
+        for status in (
+            ResourceRegistrationStatus.ANNOTATING,
+            ResourceRegistrationStatus.PENDING_REVIEW,
+            ResourceRegistrationStatus.APPROVED,
+        ):
+            model = set_registration_status(registry, resource_id=model.id, target=status)
         with pytest.raises(ValidationError, match="active"):
             prepare_run(
                 registry,
