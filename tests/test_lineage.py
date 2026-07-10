@@ -6,6 +6,7 @@ from mism_registry import (
     IOSlot,
     IOSpec,
     Resource,
+    ResourceRegistrationStatus,
     ResourceType,
     complete_run,
     get_dependents,
@@ -13,12 +14,13 @@ from mism_registry import (
     prepare_run,
     register_dataset,
     register_model,
+    set_registration_status,
     start_run,
 )
 
 
 def _make_model(registry, name="model", input_tags=(), output_tags=()):
-    """Helper: register a model with optional IOSpec."""
+    """Helper: register a model with optional IOSpec, approved for execution."""
     io_spec = (
         IOSpec(
             inputs=tuple(IOSlot(name=f"in_{i}", tags=t) for i, t in enumerate(input_tags)),
@@ -27,13 +29,20 @@ def _make_model(registry, name="model", input_tags=(), output_tags=()):
         if input_tags or output_tags
         else IOSpec()
     )
-    return register_model(
+    model = register_model(
         registry,
         name=name,
         location_uri=f"docker://{name}:v1",
         execution_type=ExecutionType.DOCKER,
         io_spec=io_spec,
     )
+    for status in (
+        ResourceRegistrationStatus.ANNOTATING,
+        ResourceRegistrationStatus.PENDING_REVIEW,
+        ResourceRegistrationStatus.APPROVED,
+    ):
+        model = set_registration_status(registry, resource_id=model.id, target=status)
+    return model
 
 
 class TestLinearPipeline:
