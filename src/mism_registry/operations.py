@@ -144,6 +144,7 @@ def register_model(
         organisms=organisms or [],
         domains=domains or [],
         date_published=date_published,
+        registration_status=ResourceRegistrationStatus.DRAFT,
     )
     validate_resource_required_fields(resource)
     validate_execution_fields(resource)
