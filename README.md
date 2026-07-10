@@ -75,7 +75,7 @@ dataset = register_dataset(
     funding=["NIAID U19 AI123456"],
     # Scientific context
     organisms=["SARS-CoV-2"],
-    modeling_scales=["molecular"],
+    model_scales=["molecular"],
     domains=["structural-biology", "immunology"],
 )
 ```
@@ -106,8 +106,9 @@ model = register_model(
 )
 ```
 
-Available execution types: `DOCKER`, `CONDA`, `PYTHON`, `R`, `BINARY`,
-`HUGGINGFACE`, `NOTEBOOK`, `OTHER`.
+Available execution types: `DOCKER`, `CONDA`, `PIP`, `PYTHON`, `R`, `BINARY`,
+`HUGGINGFACE`, `NOTEBOOK`, `SINGULARITY`, `NEXTFLOW`, `SNAKEMAKE`, `JUPYTER`,
+`NATIVE`, `OTHER`. (Maps to the annotation package's `execution.environment_kind`.)
 
 ### Run a Model
 
@@ -280,12 +281,16 @@ service layer should permit; consume them when building API validators.
 
 | Entity | Description |
 |---|---|
-| **Resource** | Anything registered: dataset, model, or tool. UUID-identified. Tracks status (`ACTIVE`, `SUPERSEDED`, `ARCHIVED`), authorship, scientific context, version chain, and execution metadata. |
+| **Resource** | Anything registered: dataset, model, or tool. UUID-identified. Tracks version lifecycle (`version_status`), registration workflow (`registration_status`), authorship, scientific context, version chain, and execution metadata. |
 | **Run** | One execution of a model. Records inputs, outputs, parameters, environment, status, timestamps, error message, log URI. |
 | **IOSpec / IOSlot** | Optional declaration of a model's expected inputs and outputs, plus a JSON-Schema `parameters_schema` (descriptive). Used for tag-based compatibility checks. |
 | **RunEnvironment** | Where and how a run executed: platform, container URI/digest, conda env, hardware, plus a free-form `extra` dict. |
 | **Author** | Frozen value object: `name`, `orcid`, `affiliation`, `role`. |
-| **Publication** | Frozen value object: `title`, `doi`, `url`, `citation`. |
+| **Contact** | Frozen value object: `name`, `role`, `email`, `affiliation`. Who to reach *now* (vs. `Author` = who wrote it). |
+| **Publication** | Frozen value object: `title`, `doi`, `pmid`, `url`, `citation`. |
+| **RelatedResource** | Frozen value object: `qualifier` (e.g. `bqmodel:isDerivedFrom`), `scheme`, `value`. Links to prior models / data. |
+| **Dependency / Container / Compute / EntryPoint / TestSpec** | Value objects describing execution (schema.md Section B): runtime/system deps, container recipes, compute needs, invocable commands, test harness. |
+| **IODetail** | Rich I/O characterization (schema.md Section C): `parameters`, `initial_conditions`, `data_inputs`, `outputs`, `experiment_protocol`. Distinct from `IOSpec` (which drives the run handshake). |
 | **ModelRunDetail / ModelRunSummary** | Composite return types for `get_model_run_details` — UI-friendly enriched run views. |
 
 ### Resource Field Reference
@@ -298,39 +303,107 @@ supported but not pushed.
 |---|---|---|---|
 | Identity | `id` | auto | UUID. |
 | | `name` | required | Human-readable. |
-| | `description` | recommended | What/why this resource is. |
+| | `short_description` | recommended | One-line summary (schema.md `model.short_description`). |
+| | `description` | recommended | What/why this resource is (schema.md `model.long_description`). |
 | | `resource_type` | required | `DATASET`, `MODEL`, `TOOL`. |
 | | `version` | recommended | Semver or free-form. |
-| | `status` | auto | `ACTIVE`, `SUPERSEDED`, `ARCHIVED`. |
+| | `version_status` | auto | Version lifecycle: `ACTIVE`, `SUPERSEDED`, `ARCHIVED`. |
+| | `registration_status` | auto | Registration workflow: `DRAFT` … `APPROVED` (see below). Defaults to `APPROVED` for programmatic registration. |
 | | `new_version_of`, `superseded_by` | auto | Set by `create_new_version`. |
-| Attribution | `authors` | recommended | Ordered list of `Author`. |
+| Attribution | `authors` | recommended | Ordered list of `Author` (who wrote it). |
+| | `contacts` | optional | List of `Contact` (who to reach now). |
 | | `organization` | recommended | Lab / department / institution. |
 | | `contact_email` | optional | |
 | | `publications` | optional | List of `Publication`. |
-| | `funding` | recommended | Grant numbers / acknowledgments. |
-| Scientific | `organisms` | recommended | e.g., `SARS-CoV-2`, `Homo sapiens`. |
-| | `modeling_scales` | recommended | `molecular`, `cellular`, `tissue`, `organ`, `organism`, `population`. |
-| | `domains` | optional | `structural-biology`, `immunology`, etc. |
+| | `related_resources` | optional | List of `RelatedResource` (derived-from / version-of links). |
+| | `funding` | recommended | Grant numbers / acknowledgments (`list[str]`). |
+| Scientific | `organisms` | recommended | e.g., `SARS-CoV-2`, `Homo sapiens` (schema.md `biology.species`). |
+| | `model_scales` | recommended | `molecular`, `cellular`, `tissue`, `organ`, `organism`, `population`. |
+| | `domains` | optional | `structural-biology`, `immunology`, etc. (schema.md `biology.topic_category`). |
 | | `date_published` | optional | When first made available externally (distinct from `created_at`). |
+| Model characterization | `model_class` | optional | MAMO labels, e.g. `agent-based model`. Value-only (ontology IRIs dropped). |
+| | `formalism` | optional | MAMO/KISAO labels, e.g. `ODE`, `stochastic`. |
+| | `determinism` | optional | `deterministic`, `stochastic`, `hybrid`, `unknown` (default). |
+| | `time_dynamics` | optional | `continuous`, `discrete`, `event-driven`, `static`, `unknown`. |
+| | `spatial` | optional | `non-spatial`, `well-mixed`, `1D`…`3D`, `lattice`, `unknown`. |
+| | `multiscale` | optional | `bool \| None`. |
+| Biology | `infectious_agents` | optional | Pathogen(s) of study. |
+| | `health_conditions` | optional | Disease / clinical indication (MONDO/HPO/DOID labels). |
+| | `biological_processes` | optional | GO labels. |
+| | `molecular_entities` | optional | ChEBI labels (small molecules, ions, drugs). |
+| | `proteins_genes` | optional | Free-text protein/gene names. |
 | Location & integrity | `location_uri` | required | iRODS path, `s3://`, `git+https://`, HF slug, etc. |
 | | `format_tags` | recommended | Auto-normalized: lowercased, stripped, deduped, sorted. |
 | | `digest_sha256`, `size_bytes` | optional | Populated automatically on iRODS ingest when available. |
 | | `external_ids` | optional | Cross-refs: `{"doi": ..., "pdb": ..., "huggingface": ...}`. |
 | | `license` | recommended | SPDX identifier. |
-| Execution (model/tool) | `execution_type` | required for model/tool | Enum (see above). |
+| Execution (model/tool) | `execution_type` | required for model/tool | Enum (see above). Maps to `execution.environment_kind`. |
 | | `execution_ref` | recommended | Image tag, pip spec, HF slug, etc. |
-| | `io_spec` | recommended | Tag-based input/output contract. |
+| | `io_spec` | recommended | Tag-based input/output contract (run handshake). |
+| | `execution_status` | optional | `characterized`, `partially_characterized`, `not_determined`. |
+| | `language_name`, `language_version` | optional | e.g. `Python`, `>=3.10`. |
+| | `dependencies` | optional | List of `Dependency` (runtime/optional/system). |
+| | `containers` | optional | List of `Container`. |
+| | `compute` | optional | `Compute` — cpu/mem/gpu/parallelism/runtime. |
+| | `entry_points` | optional | List of `EntryPoint` (invocable commands). |
+| | `tests` | optional | `TestSpec` — framework + invocation. |
+| | `execution_notes` | optional | Free text. |
+| I/O detail | `io` | optional | `IODetail` — parameters, initial conditions, data inputs, outputs, experiment protocol (schema.md Section C). |
 | System | `owner` | optional | Informational; real authz lives in OpenFGA. |
 | | `metadata` | optional | Domain-specific JSON-serializable catch-all. |
 | | `created_at`, `updated_at` | auto | UTC. |
 
-### Resource Status
+### Resource Version Status
+
+`version_status` tracks whether this is the current version of a resource.
 
 | Status | Meaning |
 |---|---|
 | `ACTIVE` | Current and usable (default). Required for use in new runs. |
 | `SUPERSEDED` | Replaced by a newer version. Set automatically by `create_new_version`. |
 | `ARCHIVED` | Manually retired. |
+
+### Registration Status
+
+`registration_status` tracks the AI-augmented registration workflow: a user
+uploads a model and gives it a title, an agent job generates the
+metadata-package, a human reviews it, and on approval the resource becomes
+searchable and executable. `prepare_run` requires the model to be `APPROVED`.
+
+| Status | Meaning |
+|---|---|
+| `DRAFT` | Uploaded + titled; resource created, no metadata-package yet. |
+| `ANNOTATING` | Agent job is generating the metadata-package. |
+| `ANNOTATION_FAILED` | Agent job failed; needs retry / attention. |
+| `PENDING_REVIEW` | Metadata-package ready for human review. |
+| `REJECTED` | Reviewer sent it back for changes. |
+| `APPROVED` | Reviewed & approved; searchable + executable. |
+
+```
+DRAFT ──> ANNOTATING ──> PENDING_REVIEW ──> APPROVED
+                │               │  ▲
+                ├──> ANNOTATION_FAILED      │
+                │                           │
+                └───────────  REJECTED ─────┘   (re-review after fixes)
+```
+
+Programmatic `register_dataset` / `register_model` default to `APPROVED`
+(immediately usable). The UX/agent flow sets `DRAFT` explicitly and advances
+the state via `set_registration_status`, which enforces the transition machine
+above (e.g. you cannot skip straight from `DRAFT` to `APPROVED`, and `APPROVED`
+is terminal):
+
+```python
+from mism_registry import set_registration_status, ResourceRegistrationStatus
+
+# Agent job finished building the metadata-package:
+set_registration_status(
+    registry,
+    resource_id=model.id,
+    target=ResourceRegistrationStatus.PENDING_REVIEW,
+)
+# Illegal jumps raise InvalidStateTransitionError.
+```
 
 ### Run Lifecycle
 
@@ -380,9 +453,12 @@ forward to the current `ACTIVE` version.
 
 A production-ready Postgres backend ships as an optional extra, built on
 SQLAlchemy 2.0 + Alembic. JSON/JSONB columns hold nested structures
-(authors, IOSpec, RunEnvironment, metadata); array columns hold tag-shaped
-fields (`format_tags`, `organisms`, `modeling_scales`, `domains`,
-`input_resource_ids`).
+(authors, contacts, publications, related_resources, IOSpec, dependencies,
+containers, compute, entry_points, tests, io, RunEnvironment, metadata);
+array columns hold tag-shaped fields (`format_tags`, `organisms`,
+`model_scales`, `domains`, `model_class`, `formalism`, `infectious_agents`,
+`health_conditions`, `biological_processes`, `molecular_entities`,
+`proteins_genes`, `input_resource_ids`).
 
 ### Install
 
@@ -455,7 +531,7 @@ class MyCustomRegistry:
     def find_resources(
         self, *,
         resource_type=None, tags=None, owner=None, name_contains=None,
-        organisms=None, scales=None, domains=None, status=None,
+        organisms=None, scales=None, domains=None, version_status=None,
         date_published_after: date | None = None,
         date_published_before: date | None = None,
     ) -> list[Resource]: ...
@@ -519,6 +595,12 @@ A small set of opinions you should know if you build on top of this layer:
   layer authorizes before calling DAL operations and writes ownership tuples
   after successful registration. The `owner` field on Resource is
   informational.
+- **Annotation ingestion is downstream.** Section A/B/C fields mirror the
+  biomodel-annotator *annotation package* (value/source/confidence + ontology
+  IRIs), but the DAL stores **values only** and takes no YAML dependency.
+  Parsing an annotation package into a `Resource` belongs to the discovery
+  API, not this layer. `scripts/align_annotation.py` is a non-packaged
+  reference probe showing that mapping, not library API.
 
 ### What this layer is not
 
@@ -560,6 +642,9 @@ uv run ruff format src/ tests/
 
 ## Further Reading
 
+For a consumer-facing API reference (import surface, Resource fields, value
+types, operations, gotchas) — see **[docs/library-usage.md](docs/library-usage.md)**.
+
 For a longer walkthrough — full end-to-end pipeline, lineage tracing
 patterns, testing recipes — see **[docs/guide.md](docs/guide.md)**.
 
@@ -583,12 +668,11 @@ honest — move items out of TODO as they ship.
 - [ ] **`doi` auto-generation** on registration — design doc shows `doi`
       flowing from DataCite. No DOI minting integration today; `external_ids`
       is the workaround.
-- [ ] **`infectiousAgent` / `species`** — design doc lists these alongside
-      `organisms`. Decide: collapse into `organisms` (current behavior) or
-      promote distinct fields. The doc mixes camelCase + snake_case here;
-      pick one before promoting.
+- [x] **`infectiousAgent` / `species`** — resolved. `organisms` holds
+      `biology.species`; `infectious_agents` is a distinct snake_case field
+      (schema.md alignment). Value-only labels; ontology IRIs not stored yet.
 - [ ] **Tag normalization for non-`format_tags` arrays** — `organisms`,
-      `modeling_scales`, `domains` are stored as-given. Lowercase / strip
+      `model_scales`, `domains` are stored as-given. Lowercase / strip
       / dedupe to match `format_tags` semantics, **or** explicitly document
       that they're proper-case (e.g. `SARS-CoV-2`, `Homo sapiens`).
 
@@ -667,7 +751,7 @@ lost:
 These are corrections / inconsistencies to fix in the **design doc itself**,
 not in code:
 
-- The Resource field tier table shows `modeling_scales` with a duplicated
+- The Resource field tier table shows `model_scales` with a duplicated
   phrase: `"recommended for resource_type=dataset, recommended for
   resource_type=dataset"`. Drop one and decide what's required vs.
   recommended for the model case.
@@ -686,8 +770,8 @@ not in code:
 - Section 4.1 says `register_*` "Validation: name and location_uri required"
   but Section 3.1 lists `description` as required. Reconcile.
 - `find_resources` parameter list in Section 7.1 omits `domains`,
-  `name_contains`, `status`, `date_published_after`, `date_published_before`,
-  which the Protocol now accepts.
+  `name_contains`, `version_status`, `date_published_after`,
+  `date_published_before`, which the Protocol now accepts.
 
 ## License
 

@@ -25,8 +25,8 @@ from mism_registry import (
     IOSpec,
     Publication,
     Resource,
-    ResourceStatus,
     ResourceType,
+    ResourceVersionStatus,
     Run,
     RunEnvironment,
     RunStatus,
@@ -139,7 +139,7 @@ class TestRegisterAndRetrieve:
         assert retrieved.resource_type == ResourceType.DATASET
         assert retrieved.format_tags == ["csv", "timeseries"]
         assert retrieved.owner == "alice"
-        assert retrieved.status == ResourceStatus.ACTIVE
+        assert retrieved.version_status == ResourceVersionStatus.ACTIVE
 
     def test_register_model_with_full_metadata(self, pg_registry):
         r = _make_model(
@@ -160,7 +160,7 @@ class TestRegisterAndRetrieve:
             ],
             funding=["NIAID U19 AI123456"],
             organisms=["SARS-CoV-2", "Homo sapiens"],
-            modeling_scales=["molecular", "cellular"],
+            model_scales=["molecular", "cellular"],
             domains=["immunology"],
             date_published=date(2026, 1, 15),
             format_tags=["docker", "ml"],
@@ -188,7 +188,7 @@ class TestRegisterAndRetrieve:
         assert retrieved.publications[0].doi == "10.1234/test"
         assert retrieved.funding == ["NIAID U19 AI123456"]
         assert set(retrieved.organisms) == {"SARS-CoV-2", "Homo sapiens"}
-        assert set(retrieved.modeling_scales) == {"molecular", "cellular"}
+        assert set(retrieved.model_scales) == {"molecular", "cellular"}
         assert retrieved.domains == ["immunology"]
         assert retrieved.date_published == date(2026, 1, 15)
         assert retrieved.digest_sha256 == "abc123"
@@ -196,6 +196,71 @@ class TestRegisterAndRetrieve:
         assert retrieved.external_ids["github"] == "mism/model"
         assert retrieved.license == "MIT"
         assert retrieved.metadata["framework"] == "pytorch"
+
+    def test_register_model_with_annotation_fields(self, pg_registry):
+        """schema.md Section A/B/C fields survive a full DB round-trip."""
+        from mism_registry.types import (
+            Argument,
+            Compute,
+            Contact,
+            Container,
+            DataInput,
+            Dependency,
+            EntryPoint,
+            ExperimentProtocol,
+            IODetail,
+            Output,
+            Parameter,
+            RelatedResource,
+            TestSpec,
+        )
+
+        r = _make_model(
+            execution_type=ExecutionType.SINGULARITY,
+            short_description="short",
+            model_class=["agent-based model"],
+            formalism=["ODE"],
+            determinism="stochastic",
+            time_dynamics="continuous",
+            spatial="lattice",
+            multiscale=True,
+            infectious_agents=["SARS-CoV-2"],
+            health_conditions=["COVID-19"],
+            biological_processes=["viral entry"],
+            molecular_entities=["ATP"],
+            proteins_genes=["ACE2"],
+            contacts=[Contact(name="Carol", role="maintainer", email="c@x.org")],
+            related_resources=[
+                RelatedResource(qualifier="bqmodel:isDerivedFrom", scheme="doi", value="10.9")
+            ],
+            execution_status="characterized",
+            language_name="Python",
+            language_version=">=3.10",
+            execution_notes="note",
+            dependencies=[Dependency(name="numpy", version_constraint=">=1.24")],
+            containers=[Container(kind="docker", file="Dockerfile")],
+            compute=Compute(cpu_cores=8, gpu_required=False, parallelism="MPI"),
+            entry_points=[
+                EntryPoint(
+                    command="python run.py",
+                    purpose="main",
+                    arguments=(Argument(name="--dur", default=10.0),),
+                )
+            ],
+            tests=TestSpec(framework="pytest", invocation="pytest tests/"),
+            io=IODetail(
+                parameters=(Parameter(name="k_run", default_value=1.0, unit="per second"),),
+                data_inputs=(DataInput(name="field.csv", format="CSV", required=True),),
+                outputs=(Output(name="traj", unit="m", format="CSV"),),
+                experiment_protocol=ExperimentProtocol(
+                    duration=10.0, duration_unit="s", observables=("x", "y")
+                ),
+            ),
+        )
+        pg_registry.register_resource(r)
+        got = pg_registry.get_resource(r.id)
+
+        assert got == r  # full-fidelity round-trip
 
     def test_get_nonexistent_raises(self, pg_registry):
         with pytest.raises(ResourceNotFoundError):
@@ -282,7 +347,7 @@ class TestFindResources:
 
     def test_find_by_scales(self, pg_registry):
         pg_registry.register_resource(
-            _make_dataset(name="D-mol", location_uri="s3://d-mol", modeling_scales=["molecular"])
+            _make_dataset(name="D-mol", location_uri="s3://d-mol", model_scales=["molecular"])
         )
         results = pg_registry.find_resources(scales=["molecular"])
         assert any(r.name == "D-mol" for r in results)
@@ -676,7 +741,7 @@ class TestVersioning:
         v2 = _make_dataset(name="D-chain", location_uri="s3://chain-v2", new_version_of=v1.id)
         pg_registry.register_resource(v2)
 
-        v1.status = ResourceStatus.SUPERSEDED
+        v1.version_status = ResourceVersionStatus.SUPERSEDED
         v1.superseded_by = v2.id
         v1.updated_at = datetime.now(timezone.utc)
         pg_registry.update_resource(v1)
@@ -698,12 +763,12 @@ class TestVersioning:
         v3 = _make_dataset(name="D-hist", location_uri="s3://hist-v3", new_version_of=v2.id)
         pg_registry.register_resource(v3)
 
-        v1.status = ResourceStatus.SUPERSEDED
+        v1.version_status = ResourceVersionStatus.SUPERSEDED
         v1.superseded_by = v2.id
         v1.updated_at = datetime.now(timezone.utc)
         pg_registry.update_resource(v1)
 
-        v2.status = ResourceStatus.SUPERSEDED
+        v2.version_status = ResourceVersionStatus.SUPERSEDED
         v2.superseded_by = v3.id
         v2.updated_at = datetime.now(timezone.utc)
         pg_registry.update_resource(v2)
@@ -801,18 +866,18 @@ class TestEdgeCases:
         r = _make_dataset(
             name="D-archived",
             location_uri="s3://archived/old-data.csv",
-            status=ResourceStatus.ARCHIVED,
+            version_status=ResourceVersionStatus.ARCHIVED,
         )
         pg_registry.register_resource(r)
         retrieved = pg_registry.get_resource(r.id)
-        assert retrieved.status == ResourceStatus.ARCHIVED
+        assert retrieved.version_status == ResourceVersionStatus.ARCHIVED
 
         # Also verify it's not returned as ACTIVE in a status-implied search
         # (find_resources has no status filter, but we can confirm the field)
         all_resources = pg_registry.find_resources()
         match = next((x for x in all_resources if x.id == r.id), None)
         assert match is not None
-        assert match.status == ResourceStatus.ARCHIVED
+        assert match.version_status == ResourceVersionStatus.ARCHIVED
 
 
 # ── Test: Get Model Run Details ─────────────────────────────────────

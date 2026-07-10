@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import warnings
 
-from .enums import ResourceStatus, ResourceType, RunStatus
+from .enums import (
+    ResourceRegistrationStatus,
+    ResourceType,
+    ResourceVersionStatus,
+    RunStatus,
+)
 from .errors import (
     InvalidStateTransitionError,
     IOSpecMismatchError,
@@ -39,10 +44,21 @@ def validate_execution_fields(resource: Resource) -> None:
 
 
 def validate_resource_is_active(resource: Resource) -> None:
-    """Ensure a resource is in ACTIVE status for operations that require it."""
-    if resource.status != ResourceStatus.ACTIVE:
+    """Ensure a resource is in ACTIVE version status for operations that require it."""
+    if resource.version_status != ResourceVersionStatus.ACTIVE:
         raise ValidationError(
-            f"Resource '{resource.id}' has status '{resource.status.value}', expected 'active'"
+            f"Resource '{resource.id}' has version_status "
+            f"'{resource.version_status.value}', expected 'active'"
+        )
+
+
+def validate_registration_approved(resource: Resource) -> None:
+    """Ensure a resource's registration workflow reached APPROVED before use."""
+    if resource.registration_status != ResourceRegistrationStatus.APPROVED:
+        raise ValidationError(
+            f"Resource '{resource.id}' has registration_status "
+            f"'{resource.registration_status.value}', expected 'approved'. "
+            f"Complete metadata review and approval before running."
         )
 
 
@@ -89,4 +105,29 @@ def validate_run_status_transition(current: RunStatus, target: RunStatus) -> Non
     if target not in _VALID_TRANSITIONS.get(current, set()):
         raise InvalidStateTransitionError(
             f"Cannot transition run from {current.value} to {target.value}"
+        )
+
+
+# Legal state transitions for the registration workflow.
+_R = ResourceRegistrationStatus
+_VALID_REGISTRATION_TRANSITIONS: dict[
+    ResourceRegistrationStatus, set[ResourceRegistrationStatus]
+] = {
+    _R.DRAFT: {_R.ANNOTATING},
+    _R.ANNOTATING: {_R.PENDING_REVIEW, _R.ANNOTATION_FAILED},
+    _R.ANNOTATION_FAILED: {_R.ANNOTATING},  # retry the agent job
+    _R.PENDING_REVIEW: {_R.APPROVED, _R.REJECTED},
+    _R.REJECTED: {_R.ANNOTATING, _R.PENDING_REVIEW},  # regenerate, or resubmit after manual fix
+    _R.APPROVED: set(),  # terminal
+}
+
+
+def validate_registration_status_transition(
+    current: ResourceRegistrationStatus,
+    target: ResourceRegistrationStatus,
+) -> None:
+    """Raise InvalidStateTransitionError if the registration transition is illegal."""
+    if target not in _VALID_REGISTRATION_TRANSITIONS.get(current, set()):
+        raise InvalidStateTransitionError(
+            f"Cannot transition registration from {current.value} to {target.value}"
         )

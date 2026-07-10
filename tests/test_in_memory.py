@@ -7,8 +7,8 @@ import pytest
 from mism_registry import (
     InMemoryRegistry,
     Resource,
-    ResourceStatus,
     ResourceType,
+    ResourceVersionStatus,
     Run,
     RunStatus,
 )
@@ -119,8 +119,8 @@ class TestFindResources:
         assert results[0].name == "d1"
 
     def test_find_by_scales(self, registry: InMemoryRegistry):
-        self._register(registry, name="d1", modeling_scales=["molecular", "cellular"])
-        self._register(registry, name="d2", modeling_scales=["population"], location_uri="s3://y")
+        self._register(registry, name="d1", model_scales=["molecular", "cellular"])
+        self._register(registry, name="d2", model_scales=["population"], location_uri="s3://y")
         results = registry.find_resources(scales=["molecular"])
         assert len(results) == 1
         assert results[0].name == "d1"
@@ -135,9 +135,9 @@ class TestFindResources:
     def test_find_by_status(self, registry: InMemoryRegistry):
         self._register(registry, name="active")
         r2 = self._register(registry, name="archived", location_uri="s3://y")
-        r2.status = ResourceStatus.ARCHIVED
+        r2.version_status = ResourceVersionStatus.ARCHIVED
         registry.update_resource(r2)
-        results = registry.find_resources(status=ResourceStatus.ACTIVE)
+        results = registry.find_resources(version_status=ResourceVersionStatus.ACTIVE)
         assert len(results) == 1
         assert results[0].name == "active"
 
@@ -309,7 +309,7 @@ class TestVersionMethods:
             name="data",
             resource_type=ResourceType.DATASET,
             location_uri="s3://v1",
-            status=ResourceStatus.SUPERSEDED,
+            version_status=ResourceVersionStatus.SUPERSEDED,
         )
         v2 = Resource(
             name="data",
@@ -339,14 +339,14 @@ class TestVersionMethods:
             name="data",
             resource_type=ResourceType.DATASET,
             location_uri="s3://v1",
-            status=ResourceStatus.SUPERSEDED,
+            version_status=ResourceVersionStatus.SUPERSEDED,
         )
         v2 = Resource(
             name="data",
             resource_type=ResourceType.DATASET,
             location_uri="s3://v2",
             new_version_of=v1.id,
-            status=ResourceStatus.SUPERSEDED,
+            version_status=ResourceVersionStatus.SUPERSEDED,
         )
         v3 = Resource(
             name="data",

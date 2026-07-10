@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from datetime import date
 
-from .enums import ResourceStatus, ResourceType, RunStatus
+from .enums import ResourceType, ResourceVersionStatus, RunStatus
 from .errors import DuplicateResourceError, ResourceNotFoundError, RunNotFoundError
 from .resource import Resource
 from .run import Run
@@ -47,7 +47,7 @@ class InMemoryRegistry:
         organisms: list[str] | None = None,
         scales: list[str] | None = None,
         domains: list[str] | None = None,
-        status: ResourceStatus | None = None,
+        version_status: ResourceVersionStatus | None = None,
         date_published_after: date | None = None,
         date_published_before: date | None = None,
     ) -> list[Resource]:
@@ -68,13 +68,13 @@ class InMemoryRegistry:
         if scales is not None:
             scale_set = {s.lower() for s in scales}
             results = [
-                r for r in results if scale_set.issubset({s.lower() for s in r.modeling_scales})
+                r for r in results if scale_set.issubset({s.lower() for s in r.model_scales})
             ]
         if domains is not None:
             domain_set = {d.lower() for d in domains}
             results = [r for r in results if domain_set.issubset({d.lower() for d in r.domains})]
-        if status is not None:
-            results = [r for r in results if r.status == status]
+        if version_status is not None:
+            results = [r for r in results if r.version_status == version_status]
         if date_published_after is not None:
             results = [
                 r

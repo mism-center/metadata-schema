@@ -7,8 +7,25 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Any
 
-from .enums import ExecutionType, ResourceStatus, ResourceType
-from .types import Author, IOSpec, Publication
+from .enums import (
+    ExecutionType,
+    ResourceRegistrationStatus,
+    ResourceType,
+    ResourceVersionStatus,
+)
+from .types import (
+    Author,
+    Compute,
+    Contact,
+    Container,
+    Dependency,
+    EntryPoint,
+    IODetail,
+    IOSpec,
+    Publication,
+    RelatedResource,
+    TestSpec,
+)
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)
@@ -20,24 +37,47 @@ class Resource:
     name: str
     resource_type: ResourceType
     location_uri: str
-    description: str = ""
+    short_description: str = ""  # schema.md model.short_description
+    description: str = ""  # maps to schema.md model.long_description
     version: str = ""
-    status: ResourceStatus = ResourceStatus.ACTIVE
+    # Version lifecycle (is this the current version?)
+    version_status: ResourceVersionStatus = ResourceVersionStatus.ACTIVE
+    # Registration workflow (upload -> annotate -> review -> approve).
+    # Defaults to APPROVED so programmatic register_* is immediately usable;
+    # the UX/agent flow sets DRAFT explicitly.
+    registration_status: ResourceRegistrationStatus = ResourceRegistrationStatus.APPROVED
     new_version_of: str = ""
     superseded_by: str = ""
 
     # Authorship & attribution
     authors: list[Author] = dataclasses.field(default_factory=list)
+    contacts: list[Contact] = dataclasses.field(default_factory=list)
     organization: str = ""
     contact_email: str = ""
     publications: list[Publication] = dataclasses.field(default_factory=list)
-    funding: list[str] = dataclasses.field(default_factory=list)
+    related_resources: list[RelatedResource] = dataclasses.field(default_factory=list)
+    funding: list[str] = dataclasses.field(default_factory=list)  # ponytail: typed Funding later
 
     # Scientific context
-    modeling_scales: list[str] = dataclasses.field(default_factory=list)
-    organisms: list[str] = dataclasses.field(default_factory=list)
-    domains: list[str] = dataclasses.field(default_factory=list)
+    model_scales: list[str] = dataclasses.field(default_factory=list)
+    organisms: list[str] = dataclasses.field(default_factory=list)  # schema biology.species
+    domains: list[str] = dataclasses.field(default_factory=list)  # schema biology.topic_category
     date_published: date | None = None
+
+    # Model characterization (schema.md Section A, values only)
+    model_class: list[str] = dataclasses.field(default_factory=list)  # MAMO labels
+    formalism: list[str] = dataclasses.field(default_factory=list)  # MAMO/KISAO labels
+    determinism: str = "unknown"  # deterministic | stochastic | hybrid | unknown
+    time_dynamics: str = "unknown"  # continuous | discrete | event-driven | static | unknown
+    spatial: str = "unknown"  # non-spatial | well-mixed | 1D | 2D | 3D | lattice | ...
+    multiscale: bool | None = None
+
+    # Biology (schema.md model.biology, values only)
+    infectious_agents: list[str] = dataclasses.field(default_factory=list)
+    health_conditions: list[str] = dataclasses.field(default_factory=list)
+    biological_processes: list[str] = dataclasses.field(default_factory=list)
+    molecular_entities: list[str] = dataclasses.field(default_factory=list)
+    proteins_genes: list[str] = dataclasses.field(default_factory=list)
 
     # Location & integrity
     format_tags: list[str] = dataclasses.field(default_factory=list)
@@ -47,9 +87,23 @@ class Resource:
     license: str = ""
 
     # Execution-related (conditional: required for model/tool)
-    execution_type: ExecutionType | None = None
+    execution_type: ExecutionType | None = None  # schema.md execution.environment_kind
     execution_ref: str = ""
-    io_spec: IOSpec | None = None
+    io_spec: IOSpec | None = None  # drives the run-time input handshake
+
+    # Execution characterization (schema.md Section B, values only)
+    execution_status: str = ""  # characterized | partially_characterized | not_determined
+    language_name: str = ""
+    language_version: str = ""
+    execution_notes: str = ""
+    dependencies: list[Dependency] = dataclasses.field(default_factory=list)
+    containers: list[Container] = dataclasses.field(default_factory=list)
+    compute: Compute | None = None
+    entry_points: list[EntryPoint] = dataclasses.field(default_factory=list)
+    tests: TestSpec | None = None
+
+    # Rich I/O characterization (schema.md Section C)
+    io: IODetail | None = None
 
     # System
     owner: str = ""

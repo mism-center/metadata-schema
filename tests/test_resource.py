@@ -3,7 +3,14 @@
 import uuid
 from datetime import date, timezone
 
-from mism_registry import ExecutionType, IOSpec, Resource, ResourceStatus, ResourceType
+from mism_registry import (
+    ExecutionType,
+    IOSpec,
+    Resource,
+    ResourceRegistrationStatus,
+    ResourceType,
+    ResourceVersionStatus,
+)
 from mism_registry.types import Author, Publication
 
 
@@ -34,7 +41,9 @@ class TestResource:
         )
         assert r.description == ""
         assert r.version == ""
-        assert r.status == ResourceStatus.ACTIVE
+        assert r.version_status == ResourceVersionStatus.ACTIVE
+        # Programmatic construction defaults to APPROVED (immediately usable).
+        assert r.registration_status == ResourceRegistrationStatus.APPROVED
         assert r.new_version_of == ""
         assert r.superseded_by == ""
         assert r.format_tags == []
@@ -54,7 +63,7 @@ class TestResource:
         assert r.publications == []
         assert r.funding == []
         # Scientific context
-        assert r.modeling_scales == []
+        assert r.model_scales == []
         assert r.organisms == []
         assert r.domains == []
         assert r.date_published is None
@@ -147,12 +156,12 @@ class TestResource:
             name="test",
             resource_type=ResourceType.DATASET,
             location_uri="s3://x",
-            modeling_scales=["molecular", "cellular"],
+            model_scales=["molecular", "cellular"],
             organisms=["SARS-CoV-2", "Homo sapiens"],
             domains=["structural-biology", "immunology"],
             date_published=date(2026, 1, 15),
         )
-        assert r.modeling_scales == ["molecular", "cellular"]
+        assert r.model_scales == ["molecular", "cellular"]
         assert r.organisms == ["SARS-CoV-2", "Homo sapiens"]
         assert r.domains == ["structural-biology", "immunology"]
         assert r.date_published == date(2026, 1, 15)
@@ -162,10 +171,10 @@ class TestResource:
             name="test",
             resource_type=ResourceType.DATASET,
             location_uri="s3://x",
-            status=ResourceStatus.SUPERSEDED,
+            version_status=ResourceVersionStatus.SUPERSEDED,
             new_version_of="old-uuid",
             superseded_by="new-uuid",
         )
-        assert r.status == ResourceStatus.SUPERSEDED
+        assert r.version_status == ResourceVersionStatus.SUPERSEDED
         assert r.new_version_of == "old-uuid"
         assert r.superseded_by == "new-uuid"

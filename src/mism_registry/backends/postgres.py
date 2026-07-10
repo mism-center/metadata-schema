@@ -25,6 +25,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     Date,
     DateTime,
@@ -47,7 +48,13 @@ from sqlalchemy.orm import (
     sessionmaker,
 )
 
-from mism_registry.enums import ExecutionType, ResourceStatus, ResourceType, RunStatus
+from mism_registry.enums import (
+    ExecutionType,
+    ResourceRegistrationStatus,
+    ResourceType,
+    ResourceVersionStatus,
+    RunStatus,
+)
 from mism_registry.errors import (
     DuplicateResourceError,
     ResourceNotFoundError,
@@ -57,7 +64,27 @@ from mism_registry.resource import Resource
 from mism_registry.run import Run
 from mism_registry.run_detail import ModelRunDetail, ModelRunSummary
 from mism_registry.search import SearchQuery, SearchResult
-from mism_registry.types import Author, IOSlot, IOSpec, Publication, RunEnvironment
+from mism_registry.types import (
+    Argument,
+    Author,
+    Compute,
+    Contact,
+    Container,
+    DataInput,
+    Dependency,
+    EntryPoint,
+    ExperimentProtocol,
+    InitialCondition,
+    IODetail,
+    IOSlot,
+    IOSpec,
+    Output,
+    Parameter,
+    Publication,
+    RelatedResource,
+    RunEnvironment,
+    TestSpec,
+)
 
 # ── SQLAlchemy Base ──────────────────────────────────────────────────
 
@@ -84,16 +111,26 @@ class ResourceModel(Base):
         Enum(ResourceType, values_callable=_enum_values, name="resourcetype", create_type=False),
     )
     location_uri: Mapped[str] = mapped_column(Text)
+    short_description: Mapped[str] = mapped_column(Text, default="")
     description: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[str] = mapped_column(String(100), default="")
-    status: Mapped[ResourceStatus] = mapped_column(
+    version_status: Mapped[ResourceVersionStatus] = mapped_column(
         Enum(
-            ResourceStatus,
+            ResourceVersionStatus,
             values_callable=_enum_values,
             name="resourcestatus",
             create_type=False,
         ),
-        default=ResourceStatus.ACTIVE,
+        default=ResourceVersionStatus.ACTIVE,
+    )
+    registration_status: Mapped[ResourceRegistrationStatus] = mapped_column(
+        Enum(
+            ResourceRegistrationStatus,
+            values_callable=_enum_values,
+            name="resourceregistrationstatus",
+            create_type=False,
+        ),
+        default=ResourceRegistrationStatus.APPROVED,
     )
     new_version_of: Mapped[str | None] = mapped_column(
         String(36),
@@ -108,16 +145,33 @@ class ResourceModel(Base):
 
     # Authorship & attribution
     authors: Mapped[Any] = mapped_column(JSONB, default=list)
+    contacts: Mapped[Any] = mapped_column(JSONB, default=list)
     organization: Mapped[str] = mapped_column(String(500), default="")
     contact_email: Mapped[str] = mapped_column(String(255), default="")
     publications: Mapped[Any] = mapped_column(JSONB, default=list)
+    related_resources: Mapped[Any] = mapped_column(JSONB, default=list)
     funding: Mapped[Any] = mapped_column(JSONB, default=list)
 
     # Scientific context
-    modeling_scales: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    model_scales: Mapped[list] = mapped_column(ARRAY(String), default=list)
     organisms: Mapped[list] = mapped_column(ARRAY(String), default=list)
     domains: Mapped[list] = mapped_column(ARRAY(String), default=list)
     date_published: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # Model characterization (schema.md Section A)
+    model_class: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    formalism: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    determinism: Mapped[str] = mapped_column(String(50), default="unknown")
+    time_dynamics: Mapped[str] = mapped_column(String(50), default="unknown")
+    spatial: Mapped[str] = mapped_column(String(50), default="unknown")
+    multiscale: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    # Biology (schema.md model.biology)
+    infectious_agents: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    health_conditions: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    biological_processes: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    molecular_entities: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    proteins_genes: Mapped[list] = mapped_column(ARRAY(String), default=list)
 
     # Location & integrity
     format_tags: Mapped[list] = mapped_column(ARRAY(String), default=list)
@@ -133,6 +187,20 @@ class ResourceModel(Base):
     )
     execution_ref: Mapped[str] = mapped_column(Text, default="")
     io_spec: Mapped[Any] = mapped_column(JSONB, nullable=True)
+
+    # Execution characterization (schema.md Section B)
+    execution_status: Mapped[str] = mapped_column(String(50), default="")
+    language_name: Mapped[str] = mapped_column(String(100), default="")
+    language_version: Mapped[str] = mapped_column(String(100), default="")
+    execution_notes: Mapped[str] = mapped_column(Text, default="")
+    dependencies: Mapped[Any] = mapped_column(JSONB, default=list)
+    containers: Mapped[Any] = mapped_column(JSONB, default=list)
+    compute: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    entry_points: Mapped[Any] = mapped_column(JSONB, default=list)
+    tests: Mapped[Any] = mapped_column(JSONB, nullable=True)
+
+    # Rich I/O characterization (schema.md Section C)
+    io: Mapped[Any] = mapped_column(JSONB, nullable=True)
 
     # System
     owner: Mapped[str] = mapped_column(String(255), default="")
@@ -152,11 +220,12 @@ class ResourceModel(Base):
 
     __table_args__ = (
         Index("ix_resources_resource_type", "resource_type"),
-        Index("ix_resources_status", "status"),
+        Index("ix_resources_version_status", "version_status"),
+        Index("ix_resources_registration_status", "registration_status"),
         Index("ix_resources_owner", "owner"),
         Index("ix_resources_format_tags", "format_tags", postgresql_using="gin"),
         Index("ix_resources_organisms", "organisms", postgresql_using="gin"),
-        Index("ix_resources_modeling_scales", "modeling_scales", postgresql_using="gin"),
+        Index("ix_resources_model_scales", "model_scales", postgresql_using="gin"),
         Index("ix_resources_domains", "domains", postgresql_using="gin"),
     )
 
@@ -207,14 +276,15 @@ class RunModel(Base):
 
 _FILTER_COLUMN_MAP: dict[str, Any] = {
     "resource_type": ResourceModel.resource_type,
-    "status": ResourceModel.status,
+    "version_status": ResourceModel.version_status,
+    "registration_status": ResourceModel.registration_status,
     "execution_type": ResourceModel.execution_type,
     "owner": ResourceModel.owner,
     "organization": ResourceModel.organization,
     "license": ResourceModel.license,
     "organisms": ResourceModel.organisms,
     "domains": ResourceModel.domains,
-    "modeling_scales": ResourceModel.modeling_scales,
+    "model_scales": ResourceModel.model_scales,
     "format_tags": ResourceModel.format_tags,
     "created_at": ResourceModel.created_at,
     "updated_at": ResourceModel.updated_at,
@@ -225,7 +295,7 @@ _ARRAY_FIELDS: frozenset[str] = frozenset(
     {
         "organisms",
         "domains",
-        "modeling_scales",
+        "model_scales",
         "format_tags",
     }
 )
@@ -284,6 +354,72 @@ def _deserialize_environment(data: Any) -> RunEnvironment | None:
     return RunEnvironment(**data)
 
 
+# -- Schema.md Section A/B/C typed fields (dataclasses.asdict handles nesting) --
+
+
+def _ser_list(items: Any) -> list[dict[str, Any]]:
+    return [dataclasses.asdict(i) for i in items]
+
+
+def _ser_opt(obj: Any) -> dict[str, Any] | None:
+    return dataclasses.asdict(obj) if obj is not None else None
+
+
+def _deser_contacts(data: Any) -> list[Contact]:
+    return [Contact(**c) for c in data] if data else []
+
+
+def _deser_related(data: Any) -> list[RelatedResource]:
+    return [RelatedResource(**r) for r in data] if data else []
+
+
+def _deser_dependencies(data: Any) -> list[Dependency]:
+    return [Dependency(**d) for d in data] if data else []
+
+
+def _deser_containers(data: Any) -> list[Container]:
+    return [Container(**c) for c in data] if data else []
+
+
+def _deser_entry_points(data: Any) -> list[EntryPoint]:
+    if not data:
+        return []
+    return [
+        EntryPoint(
+            command=e["command"],
+            purpose=e.get("purpose", ""),
+            arguments=tuple(Argument(**a) for a in e.get("arguments", [])),
+        )
+        for e in data
+    ]
+
+
+def _deser_compute(data: Any) -> Compute | None:
+    return Compute(**data) if data else None
+
+
+def _deser_tests(data: Any) -> TestSpec | None:
+    return TestSpec(**data) if data else None
+
+
+def _deser_io(data: Any) -> IODetail | None:
+    if not data:
+        return None
+    ep = data.get("experiment_protocol")
+    if ep is not None:
+        ep = {**ep, "observables": tuple(ep.get("observables", []))}
+        ep = ExperimentProtocol(**ep)
+    return IODetail(
+        parameters=tuple(Parameter(**p) for p in data.get("parameters", [])),
+        initial_conditions=tuple(
+            InitialCondition(**i) for i in data.get("initial_conditions", [])
+        ),
+        data_inputs=tuple(DataInput(**d) for d in data.get("data_inputs", [])),
+        outputs=tuple(Output(**o) for o in data.get("outputs", [])),
+        experiment_protocol=ep,
+    )
+
+
 # ── Domain ↔ Database Mapping ────────────────────────────────────────
 
 
@@ -294,20 +430,35 @@ def resource_to_db(resource: Resource) -> ResourceModel:
         name=resource.name,
         resource_type=resource.resource_type,
         location_uri=resource.location_uri,
+        short_description=resource.short_description,
         description=resource.description,
         version=resource.version,
-        status=resource.status,
+        version_status=resource.version_status,
+        registration_status=resource.registration_status,
         new_version_of=resource.new_version_of or None,
         superseded_by=resource.superseded_by or None,
         authors=_serialize_authors(resource.authors),
+        contacts=_ser_list(resource.contacts),
         organization=resource.organization,
         contact_email=resource.contact_email,
         publications=_serialize_publications(resource.publications),
+        related_resources=_ser_list(resource.related_resources),
         funding=resource.funding,
-        modeling_scales=resource.modeling_scales,
+        model_scales=resource.model_scales,
         organisms=resource.organisms,
         domains=resource.domains,
         date_published=resource.date_published,
+        model_class=resource.model_class,
+        formalism=resource.formalism,
+        determinism=resource.determinism,
+        time_dynamics=resource.time_dynamics,
+        spatial=resource.spatial,
+        multiscale=resource.multiscale,
+        infectious_agents=resource.infectious_agents,
+        health_conditions=resource.health_conditions,
+        biological_processes=resource.biological_processes,
+        molecular_entities=resource.molecular_entities,
+        proteins_genes=resource.proteins_genes,
         format_tags=resource.format_tags,
         digest_sha256=resource.digest_sha256,
         size_bytes=resource.size_bytes,
@@ -316,6 +467,16 @@ def resource_to_db(resource: Resource) -> ResourceModel:
         execution_type=resource.execution_type,
         execution_ref=resource.execution_ref,
         io_spec=_serialize_io_spec(resource.io_spec),
+        execution_status=resource.execution_status,
+        language_name=resource.language_name,
+        language_version=resource.language_version,
+        execution_notes=resource.execution_notes,
+        dependencies=_ser_list(resource.dependencies),
+        containers=_ser_list(resource.containers),
+        compute=_ser_opt(resource.compute),
+        entry_points=_ser_list(resource.entry_points),
+        tests=_ser_opt(resource.tests),
+        io=_ser_opt(resource.io),
         owner=resource.owner,
         metadata_=resource.metadata,
         created_at=resource.created_at,
@@ -330,20 +491,35 @@ def resource_from_db(model: ResourceModel) -> Resource:
         name=model.name,
         resource_type=model.resource_type,
         location_uri=model.location_uri,
+        short_description=model.short_description,
         description=model.description,
         version=model.version,
-        status=model.status,
+        version_status=model.version_status,
+        registration_status=model.registration_status,
         new_version_of=model.new_version_of or "",
         superseded_by=model.superseded_by or "",
         authors=_deserialize_authors(model.authors),
+        contacts=_deser_contacts(model.contacts),
         organization=model.organization,
         contact_email=model.contact_email,
         publications=_deserialize_publications(model.publications),
+        related_resources=_deser_related(model.related_resources),
         funding=model.funding or [],
-        modeling_scales=model.modeling_scales or [],
+        model_scales=model.model_scales or [],
         organisms=model.organisms or [],
         domains=model.domains or [],
         date_published=model.date_published,
+        model_class=model.model_class or [],
+        formalism=model.formalism or [],
+        determinism=model.determinism,
+        time_dynamics=model.time_dynamics,
+        spatial=model.spatial,
+        multiscale=model.multiscale,
+        infectious_agents=model.infectious_agents or [],
+        health_conditions=model.health_conditions or [],
+        biological_processes=model.biological_processes or [],
+        molecular_entities=model.molecular_entities or [],
+        proteins_genes=model.proteins_genes or [],
         format_tags=model.format_tags or [],
         digest_sha256=model.digest_sha256,
         size_bytes=model.size_bytes,
@@ -352,6 +528,16 @@ def resource_from_db(model: ResourceModel) -> Resource:
         execution_type=model.execution_type,
         execution_ref=model.execution_ref,
         io_spec=_deserialize_io_spec(model.io_spec),
+        execution_status=model.execution_status,
+        language_name=model.language_name,
+        language_version=model.language_version,
+        execution_notes=model.execution_notes,
+        dependencies=_deser_dependencies(model.dependencies),
+        containers=_deser_containers(model.containers),
+        compute=_deser_compute(model.compute),
+        entry_points=_deser_entry_points(model.entry_points),
+        tests=_deser_tests(model.tests),
+        io=_deser_io(model.io),
         owner=model.owner,
         metadata=model.metadata_ or {},
         created_at=model.created_at,
@@ -462,7 +648,7 @@ class PostgresRegistry:
         organisms: list[str] | None = None,
         scales: list[str] | None = None,
         domains: list[str] | None = None,
-        status: ResourceStatus | None = None,
+        version_status: ResourceVersionStatus | None = None,
         date_published_after: date | None = None,
         date_published_before: date | None = None,
     ) -> list[Resource]:
@@ -480,11 +666,11 @@ class PostgresRegistry:
             # Resource must share at least one organism (&& operator)
             stmt = stmt.where(ResourceModel.organisms.overlap(organisms))
         if scales is not None:
-            stmt = stmt.where(ResourceModel.modeling_scales.overlap(scales))
+            stmt = stmt.where(ResourceModel.model_scales.overlap(scales))
         if domains is not None:
             stmt = stmt.where(ResourceModel.domains.overlap(domains))
-        if status is not None:
-            stmt = stmt.where(ResourceModel.status == status)
+        if version_status is not None:
+            stmt = stmt.where(ResourceModel.version_status == version_status)
         if date_published_after is not None:
             stmt = stmt.where(ResourceModel.date_published >= date_published_after)
         if date_published_before is not None:
@@ -635,20 +821,35 @@ class PostgresRegistry:
         model.name = resource.name
         model.resource_type = resource.resource_type
         model.location_uri = resource.location_uri
+        model.short_description = resource.short_description
         model.description = resource.description
         model.version = resource.version
-        model.status = resource.status
+        model.version_status = resource.version_status
+        model.registration_status = resource.registration_status
         model.new_version_of = resource.new_version_of or None
         model.superseded_by = resource.superseded_by or None
         model.authors = _serialize_authors(resource.authors)
+        model.contacts = _ser_list(resource.contacts)
         model.organization = resource.organization
         model.contact_email = resource.contact_email
         model.publications = _serialize_publications(resource.publications)
+        model.related_resources = _ser_list(resource.related_resources)
         model.funding = resource.funding
-        model.modeling_scales = resource.modeling_scales
+        model.model_scales = resource.model_scales
         model.organisms = resource.organisms
         model.domains = resource.domains
         model.date_published = resource.date_published
+        model.model_class = resource.model_class
+        model.formalism = resource.formalism
+        model.determinism = resource.determinism
+        model.time_dynamics = resource.time_dynamics
+        model.spatial = resource.spatial
+        model.multiscale = resource.multiscale
+        model.infectious_agents = resource.infectious_agents
+        model.health_conditions = resource.health_conditions
+        model.biological_processes = resource.biological_processes
+        model.molecular_entities = resource.molecular_entities
+        model.proteins_genes = resource.proteins_genes
         model.format_tags = resource.format_tags
         model.digest_sha256 = resource.digest_sha256
         model.size_bytes = resource.size_bytes
@@ -657,6 +858,16 @@ class PostgresRegistry:
         model.execution_type = resource.execution_type
         model.execution_ref = resource.execution_ref
         model.io_spec = _serialize_io_spec(resource.io_spec)
+        model.execution_status = resource.execution_status
+        model.language_name = resource.language_name
+        model.language_version = resource.language_version
+        model.execution_notes = resource.execution_notes
+        model.dependencies = _ser_list(resource.dependencies)
+        model.containers = _ser_list(resource.containers)
+        model.compute = _ser_opt(resource.compute)
+        model.entry_points = _ser_list(resource.entry_points)
+        model.tests = _ser_opt(resource.tests)
+        model.io = _ser_opt(resource.io)
         model.owner = resource.owner
         model.metadata_ = resource.metadata
         model.updated_at = resource.updated_at

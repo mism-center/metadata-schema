@@ -12,18 +12,38 @@ class ResourceType(str, Enum):
 class ExecutionType(str, Enum):
     DOCKER = "docker"
     CONDA = "conda"
+    PIP = "pip"
     PYTHON = "python"
     R = "r"
     BINARY = "binary"
     HUGGINGFACE = "huggingface"
     NOTEBOOK = "notebook"
+    # schema.md execution.environment_kind additions
+    SINGULARITY = "singularity"
+    NEXTFLOW = "nextflow"
+    SNAKEMAKE = "snakemake"
+    JUPYTER = "jupyter"
+    NATIVE = "native"
     OTHER = "other"
 
 
-class ResourceStatus(str, Enum):
+class ResourceVersionStatus(str, Enum):
+    """Version lifecycle: is this the current version of the resource?"""
+
     ACTIVE = "active"
     SUPERSEDED = "superseded"
     ARCHIVED = "archived"
+
+
+class ResourceRegistrationStatus(str, Enum):
+    """AI-augmented registration workflow: upload -> annotate -> review -> approve."""
+
+    DRAFT = "draft"  # uploaded + titled; resource created, no metadata-package yet
+    ANNOTATING = "annotating"  # agent job building the metadata-package
+    ANNOTATION_FAILED = "annotation_failed"  # agent job failed; needs retry/attention
+    PENDING_REVIEW = "pending_review"  # metadata-package ready for human review
+    REJECTED = "rejected"  # reviewer sent it back for changes
+    APPROVED = "approved"  # reviewed & approved; searchable + executable
 
 
 class RunStatus(str, Enum):

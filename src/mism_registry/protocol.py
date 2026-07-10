@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Protocol, runtime_checkable
 
-from .enums import ResourceStatus, ResourceType, RunStatus
+from .enums import ResourceType, ResourceVersionStatus, RunStatus
 from .resource import Resource
 from .run import Run
 from .run_detail import ModelRunSummary
@@ -32,7 +32,7 @@ class Registry(Protocol):
         organisms: list[str] | None = None,
         scales: list[str] | None = None,
         domains: list[str] | None = None,
-        status: ResourceStatus | None = None,
+        version_status: ResourceVersionStatus | None = None,
         date_published_after: date | None = None,
         date_published_before: date | None = None,
     ) -> list[Resource]: ...

@@ -88,7 +88,7 @@ dataset = register_dataset(
     location_uri="s3://mism-data/omicron_spike.fasta",
 )
 print(dataset.id)       # auto-generated UUID
-print(dataset.status)   # ResourceStatus.ACTIVE
+print(dataset.version_status)   # ResourceVersionStatus.ACTIVE
 ```
 
 That's the minimum. In practice you'll want to add context so others can find
@@ -121,7 +121,7 @@ dataset = register_dataset(
     funding=["NIAID U19 AI123456"],
     # Scientific context
     organisms=["SARS-CoV-2"],
-    modeling_scales=["molecular"],
+    model_scales=["molecular"],
     domains=["structural-biology", "immunology"],
     # Integrity & provenance
     version="1.0",
@@ -504,7 +504,7 @@ print(latest.version)  # "3.0"
 # Get the full chain, oldest first
 history = get_version_history(registry, dataset.id)
 for r in history:
-    print(f"  {r.version} ({r.status.value}) — {r.id[:8]}...")
+    print(f"  {r.version} ({r.version_status.value}) — {r.id[:8]}...")
 # Output:
 #   1.0 (superseded) — a1b2c3d4...
 #   2.0 (superseded) — e5f6a7b8...
@@ -757,8 +757,9 @@ def test_run_lifecycle(registry, sample_dataset, sample_model):
 | Enum | Values |
 |---|---|
 | `ResourceType` | `DATASET`, `MODEL`, `TOOL` |
-| `ExecutionType` | `DOCKER`, `CONDA`, `PYTHON`, `R`, `BINARY`, `HUGGINGFACE`, `NOTEBOOK`, `OTHER` |
-| `ResourceStatus` | `ACTIVE`, `SUPERSEDED`, `ARCHIVED` |
+| `ExecutionType` | `DOCKER`, `CONDA`, `PIP`, `PYTHON`, `R`, `BINARY`, `HUGGINGFACE`, `NOTEBOOK`, `SINGULARITY`, `NEXTFLOW`, `SNAKEMAKE`, `JUPYTER`, `NATIVE`, `OTHER` |
+| `ResourceVersionStatus` | `ACTIVE`, `SUPERSEDED`, `ARCHIVED` |
+| `ResourceRegistrationStatus` | `DRAFT`, `ANNOTATING`, `ANNOTATION_FAILED`, `PENDING_REVIEW`, `REJECTED`, `APPROVED` |
 | `RunStatus` | `REGISTERED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` |
 
 ### Exceptions

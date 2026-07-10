@@ -1,6 +1,12 @@
 """Tests for enumerations."""
 
-from mism_registry import ExecutionType, ResourceStatus, ResourceType, RunStatus
+from mism_registry import (
+    ExecutionType,
+    ResourceRegistrationStatus,
+    ResourceType,
+    ResourceVersionStatus,
+    RunStatus,
+)
 
 
 class TestResourceType:
@@ -26,11 +32,17 @@ class TestExecutionType:
         expected = {
             "docker",
             "conda",
+            "pip",
             "python",
             "r",
             "binary",
             "huggingface",
             "notebook",
+            "singularity",
+            "nextflow",
+            "snakemake",
+            "jupyter",
+            "native",
             "other",
         }
         assert {e.value for e in ExecutionType} == expected
@@ -40,17 +52,34 @@ class TestExecutionType:
             assert member.value == member.value.lower()
 
 
-class TestResourceStatus:
+class TestResourceVersionStatus:
     def test_members(self):
         expected = {"active", "superseded", "archived"}
-        assert {s.value for s in ResourceStatus} == expected
+        assert {s.value for s in ResourceVersionStatus} == expected
 
     def test_values_are_lowercase(self):
-        for member in ResourceStatus:
+        for member in ResourceVersionStatus:
             assert member.value == member.value.lower()
 
     def test_is_str_subclass(self):
-        assert isinstance(ResourceStatus.ACTIVE, str)
+        assert isinstance(ResourceVersionStatus.ACTIVE, str)
+
+
+class TestResourceRegistrationStatus:
+    def test_members(self):
+        expected = {
+            "draft",
+            "annotating",
+            "annotation_failed",
+            "pending_review",
+            "rejected",
+            "approved",
+        }
+        assert {s.value for s in ResourceRegistrationStatus} == expected
+
+    def test_values_are_lowercase(self):
+        for member in ResourceRegistrationStatus:
+            assert member.value == member.value.lower()
 
 
 class TestRunStatus:

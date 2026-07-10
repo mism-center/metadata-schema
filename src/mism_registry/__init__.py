@@ -1,7 +1,13 @@
 """MISM Registry: FAIR-ready metadata registry for the MISM ecosystem."""
 
 from ._version import __version__
-from .enums import ExecutionType, ResourceStatus, ResourceType, RunStatus
+from .enums import (
+    ExecutionType,
+    ResourceRegistrationStatus,
+    ResourceType,
+    ResourceVersionStatus,
+    RunStatus,
+)
 from .errors import (
     DuplicateResourceError,
     InvalidStateTransitionError,
@@ -27,6 +33,7 @@ from .operations import (
     prepare_run,
     register_dataset,
     register_model,
+    set_registration_status,
     start_run,
 )
 from .protocol import Registry
@@ -48,7 +55,8 @@ __all__ = [
     # Enums
     "ResourceType",
     "ExecutionType",
-    "ResourceStatus",
+    "ResourceVersionStatus",
+    "ResourceRegistrationStatus",
     "RunStatus",
     # Data model
     "Author",
@@ -82,6 +90,7 @@ __all__ = [
     "register_dataset",
     "register_model",
     "create_new_version",
+    "set_registration_status",
     "prepare_run",
     "start_run",
     "complete_run",

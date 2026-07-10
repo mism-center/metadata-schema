@@ -6,7 +6,13 @@ import warnings
 from datetime import date, datetime, timezone
 from typing import Any
 
-from .enums import ExecutionType, ResourceStatus, ResourceType, RunStatus
+from .enums import (
+    ExecutionType,
+    ResourceRegistrationStatus,
+    ResourceType,
+    ResourceVersionStatus,
+    RunStatus,
+)
 from .errors import ValidationError
 from .protocol import Registry
 from .resource import Resource
@@ -16,6 +22,8 @@ from .types import Author, IOSpec, Publication, RunEnvironment
 from .validation import (
     check_iospec_handshake,
     validate_execution_fields,
+    validate_registration_approved,
+    validate_registration_status_transition,
     validate_resource_is_active,
     validate_resource_required_fields,
     validate_run_status_transition,
@@ -45,7 +53,7 @@ def register_dataset(
     publications: list[Publication] | None = None,
     funding: list[str] | None = None,
     # Scientific context
-    modeling_scales: list[str] | None = None,
+    model_scales: list[str] | None = None,
     organisms: list[str] | None = None,
     domains: list[str] | None = None,
     date_published: date | None = None,
@@ -69,7 +77,7 @@ def register_dataset(
         contact_email=contact_email,
         publications=publications or [],
         funding=funding or [],
-        modeling_scales=modeling_scales or [],
+        model_scales=model_scales or [],
         organisms=organisms or [],
         domains=domains or [],
         date_published=date_published,
@@ -103,7 +111,7 @@ def register_model(
     publications: list[Publication] | None = None,
     funding: list[str] | None = None,
     # Scientific context
-    modeling_scales: list[str] | None = None,
+    model_scales: list[str] | None = None,
     organisms: list[str] | None = None,
     domains: list[str] | None = None,
     date_published: date | None = None,
@@ -132,7 +140,7 @@ def register_model(
         contact_email=contact_email,
         publications=publications or [],
         funding=funding or [],
-        modeling_scales=modeling_scales or [],
+        model_scales=model_scales or [],
         organisms=organisms or [],
         domains=domains or [],
         date_published=date_published,
@@ -190,7 +198,7 @@ def create_new_version(
         contact_email=original.contact_email,
         publications=list(original.publications),
         funding=list(original.funding),
-        modeling_scales=list(original.modeling_scales),
+        model_scales=list(original.model_scales),
         organisms=list(original.organisms),
         domains=list(original.domains),
         date_published=original.date_published,
@@ -200,12 +208,35 @@ def create_new_version(
     registered = registry.register_resource(new_resource)
 
     # Mark original as superseded
-    original.status = ResourceStatus.SUPERSEDED
+    original.version_status = ResourceVersionStatus.SUPERSEDED
     original.superseded_by = registered.id
     original.updated_at = datetime.now(timezone.utc)
     registry.update_resource(original)
 
     return registered
+
+
+# ── Registration workflow ─────────────────────────────────────────────
+
+
+def set_registration_status(
+    registry: Registry,
+    *,
+    resource_id: str,
+    target: ResourceRegistrationStatus,
+) -> Resource:
+    """Advance a resource through the registration workflow.
+
+    Validates the transition against the legal state machine
+    (draft -> annotating -> pending_review -> approved, with failure/reject
+    branches) before persisting. Raises InvalidStateTransitionError on an
+    illegal move.
+    """
+    resource = registry.get_resource(resource_id)
+    validate_registration_status_transition(resource.registration_status, target)
+    resource.registration_status = target
+    resource.updated_at = datetime.now(timezone.utc)
+    return registry.update_resource(resource)
 
 
 # ── Execution tracking ────────────────────────────────────────────────
@@ -232,6 +263,8 @@ def prepare_run(
             f"Resource '{model_id}' is a {model.resource_type.value}, not a model or tool"
         )
     validate_resource_is_active(model)
+    # Registration gate: only approved models are executable.
+    validate_registration_approved(model)
 
     input_resources = []
     for rid in input_resource_ids:

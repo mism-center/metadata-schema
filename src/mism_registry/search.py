@@ -54,14 +54,15 @@ class SearchResult:
 # column_kind: "scalar" | "array" | "datetime"
 FILTERABLE_FIELDS: dict[str, tuple[str, frozenset[str]]] = {
     "resource_type": ("scalar", frozenset({"eq", "in"})),
-    "status": ("scalar", frozenset({"eq", "in"})),
+    "version_status": ("scalar", frozenset({"eq", "in"})),
+    "registration_status": ("scalar", frozenset({"eq", "in"})),
     "execution_type": ("scalar", frozenset({"eq", "in"})),
     "owner": ("scalar", frozenset({"eq", "in"})),
     "organization": ("scalar", frozenset({"eq", "in"})),
     "license": ("scalar", frozenset({"eq", "in"})),
     "organisms": ("array", frozenset({"overlap", "contains"})),
     "domains": ("array", frozenset({"overlap", "contains"})),
-    "modeling_scales": ("array", frozenset({"overlap", "contains"})),
+    "model_scales": ("array", frozenset({"overlap", "contains"})),
     "format_tags": ("array", frozenset({"overlap", "contains"})),
     "created_at": ("datetime", frozenset({"gte", "lte"})),
     "updated_at": ("datetime", frozenset({"gte", "lte"})),
@@ -71,14 +72,15 @@ FILTERABLE_FIELDS: dict[str, tuple[str, frozenset[str]]] = {
 AGGREGATABLE_FIELDS: frozenset[str] = frozenset(
     {
         "resource_type",
-        "status",
+        "version_status",
+        "registration_status",
         "execution_type",
         "owner",
         "organization",
         "license",
         "organisms",
         "domains",
-        "modeling_scales",
+        "model_scales",
         "format_tags",
     }
 )
