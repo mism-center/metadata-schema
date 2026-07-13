@@ -15,6 +15,8 @@ from mism_registry import (
     register_model,
     start_run,
 )
+from mism_registry.enums import ResourceRegistrationStatus
+from mism_registry.operations import set_registration_status
 
 
 def _make_model(registry, name="model", input_tags=(), output_tags=()):
@@ -27,13 +29,21 @@ def _make_model(registry, name="model", input_tags=(), output_tags=()):
         if input_tags or output_tags
         else IOSpec()
     )
-    return register_model(
+    model = register_model(
         registry,
         name=name,
         location_uri=f"docker://{name}:v1",
         execution_type=ExecutionType.DOCKER,
         io_spec=io_spec,
     )
+    # Models register as DRAFT; walk to APPROVED so runs are allowed.
+    for target in (
+        ResourceRegistrationStatus.ANNOTATING,
+        ResourceRegistrationStatus.PENDING_REVIEW,
+        ResourceRegistrationStatus.APPROVED,
+    ):
+        model = set_registration_status(registry, resource_id=model.id, target=target)
+    return model
 
 
 class TestLinearPipeline:

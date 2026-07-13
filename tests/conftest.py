@@ -10,6 +10,21 @@ from mism_registry import (
     register_dataset,
     register_model,
 )
+from mism_registry.enums import ResourceRegistrationStatus
+from mism_registry.operations import set_registration_status
+
+
+def _approve(registry: InMemoryRegistry, resource):
+    """Walk a freshly-registered (DRAFT) resource through the workflow to APPROVED."""
+    for target in (
+        ResourceRegistrationStatus.ANNOTATING,
+        ResourceRegistrationStatus.PENDING_REVIEW,
+        ResourceRegistrationStatus.APPROVED,
+    ):
+        resource = set_registration_status(
+            registry, resource_id=resource.id, target=target
+        )
+    return resource
 
 
 @pytest.fixture()
@@ -32,8 +47,8 @@ def sample_dataset(registry: InMemoryRegistry):
 
 @pytest.fixture()
 def sample_model(registry: InMemoryRegistry):
-    """A pre-registered model with IOSpec."""
-    return register_model(
+    """A pre-registered, approved model with IOSpec."""
+    model = register_model(
         registry,
         name="Test Model",
         location_uri="docker://registry/model:v1",
@@ -44,14 +59,16 @@ def sample_model(registry: InMemoryRegistry):
             outputs=(IOSlot(name="predictions", tags=("json",)),),
         ),
     )
+    return _approve(registry, model)
 
 
 @pytest.fixture()
 def sample_model_no_iospec(registry: InMemoryRegistry):
-    """A pre-registered model without IOSpec."""
-    return register_model(
+    """A pre-registered, approved model without IOSpec."""
+    model = register_model(
         registry,
         name="Simple Model",
         location_uri="git+https://github.com/org/model@v1",
         execution_type=ExecutionType.PYTHON,
     )
+    return _approve(registry, model)

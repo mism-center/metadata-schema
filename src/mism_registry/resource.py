@@ -43,9 +43,8 @@ class Resource:
     # Version lifecycle (is this the current version?)
     version_status: ResourceVersionStatus = ResourceVersionStatus.ACTIVE
     # Registration workflow (upload -> annotate -> review -> approve).
-    # Defaults to APPROVED so programmatic register_* is immediately usable;
-    # the UX/agent flow sets DRAFT explicitly.
-    registration_status: ResourceRegistrationStatus = ResourceRegistrationStatus.APPROVED
+    # Defaults to DRAFT; workflow promotes through annotating -> review -> approve.
+    registration_status: ResourceRegistrationStatus = ResourceRegistrationStatus.DRAFT
     new_version_of: str = ""
     superseded_by: str = ""
 
