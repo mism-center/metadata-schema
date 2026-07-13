@@ -17,8 +17,6 @@ from mism_registry import (
     set_registration_status,
     start_run,
 )
-from mism_registry.enums import ResourceRegistrationStatus
-from mism_registry.operations import set_registration_status
 
 
 def _make_model(registry, name="model", input_tags=(), output_tags=()):

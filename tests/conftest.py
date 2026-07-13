@@ -12,8 +12,6 @@ from mism_registry import (
     register_model,
     set_registration_status,
 )
-from mism_registry.enums import ResourceRegistrationStatus
-from mism_registry.operations import set_registration_status
 
 
 def _approve(registry: InMemoryRegistry, resource):
