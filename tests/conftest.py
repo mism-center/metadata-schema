@@ -23,9 +23,7 @@ def _approve(registry: InMemoryRegistry, resource):
         ResourceRegistrationStatus.PENDING_REVIEW,
         ResourceRegistrationStatus.APPROVED,
     ):
-        resource = set_registration_status(
-            registry, resource_id=resource.id, target=target
-        )
+        resource = set_registration_status(registry, resource_id=resource.id, target=target)
     return resource
 
 
