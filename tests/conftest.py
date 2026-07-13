@@ -7,8 +7,10 @@ from mism_registry import (
     InMemoryRegistry,
     IOSlot,
     IOSpec,
+    ResourceRegistrationStatus,
     register_dataset,
     register_model,
+    set_registration_status,
 )
 from mism_registry.enums import ResourceRegistrationStatus
 from mism_registry.operations import set_registration_status
@@ -24,6 +26,17 @@ def _approve(registry: InMemoryRegistry, resource):
         resource = set_registration_status(
             registry, resource_id=resource.id, target=target
         )
+    return resource
+
+
+def _approve(registry: InMemoryRegistry, resource):
+    """Walk a freshly registered model through to APPROVED status."""
+    for status in (
+        ResourceRegistrationStatus.ANNOTATING,
+        ResourceRegistrationStatus.PENDING_REVIEW,
+        ResourceRegistrationStatus.APPROVED,
+    ):
+        resource = set_registration_status(registry, resource_id=resource.id, target=status)
     return resource
 
 
