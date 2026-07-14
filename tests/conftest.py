@@ -15,6 +15,17 @@ from mism_registry import (
 
 
 def _approve(registry: InMemoryRegistry, resource):
+    """Walk a freshly-registered (DRAFT) resource through the workflow to APPROVED."""
+    for target in (
+        ResourceRegistrationStatus.ANNOTATING,
+        ResourceRegistrationStatus.PENDING_REVIEW,
+        ResourceRegistrationStatus.APPROVED,
+    ):
+        resource = set_registration_status(registry, resource_id=resource.id, target=target)
+    return resource
+
+
+def _approve(registry: InMemoryRegistry, resource):
     """Walk a freshly registered model through to APPROVED status."""
     for status in (
         ResourceRegistrationStatus.ANNOTATING,
@@ -45,7 +56,7 @@ def sample_dataset(registry: InMemoryRegistry):
 
 @pytest.fixture()
 def sample_model(registry: InMemoryRegistry):
-    """A pre-registered model with IOSpec, approved for execution."""
+    """A pre-registered, approved model with IOSpec."""
     model = register_model(
         registry,
         name="Test Model",
@@ -62,7 +73,7 @@ def sample_model(registry: InMemoryRegistry):
 
 @pytest.fixture()
 def sample_model_no_iospec(registry: InMemoryRegistry):
-    """A pre-registered model without IOSpec, approved for execution."""
+    """A pre-registered, approved model without IOSpec."""
     model = register_model(
         registry,
         name="Simple Model",

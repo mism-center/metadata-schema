@@ -36,12 +36,13 @@ def _make_model(registry, name="model", input_tags=(), output_tags=()):
         execution_type=ExecutionType.DOCKER,
         io_spec=io_spec,
     )
-    for status in (
+    # Models register as DRAFT; walk to APPROVED so runs are allowed.
+    for target in (
         ResourceRegistrationStatus.ANNOTATING,
         ResourceRegistrationStatus.PENDING_REVIEW,
         ResourceRegistrationStatus.APPROVED,
     ):
-        model = set_registration_status(registry, resource_id=model.id, target=status)
+        model = set_registration_status(registry, resource_id=model.id, target=target)
     return model
 
 

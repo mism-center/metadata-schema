@@ -42,8 +42,8 @@ class TestResource:
         assert r.description == ""
         assert r.version == ""
         assert r.version_status == ResourceVersionStatus.ACTIVE
-        # Programmatic construction defaults to APPROVED (immediately usable).
-        assert r.registration_status == ResourceRegistrationStatus.APPROVED
+        # Programmatic construction defaults to DRAFT (workflow promotes it).
+        assert r.registration_status == ResourceRegistrationStatus.DRAFT
         assert r.new_version_of == ""
         assert r.superseded_by == ""
         assert r.format_tags == []
