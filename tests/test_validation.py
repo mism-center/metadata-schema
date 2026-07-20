@@ -157,6 +157,7 @@ class TestRegistrationStatusTransition:
             (_RS.ANNOTATION_FAILED, _RS.ANNOTATING),
             (_RS.PENDING_REVIEW, _RS.APPROVED),
             (_RS.PENDING_REVIEW, _RS.REJECTED),
+            (_RS.PENDING_REVIEW, _RS.ANNOTATING),  # re-annotation from review
             (_RS.REJECTED, _RS.ANNOTATING),
             (_RS.REJECTED, _RS.PENDING_REVIEW),
         ],
@@ -170,7 +171,6 @@ class TestRegistrationStatusTransition:
             (_RS.DRAFT, _RS.APPROVED),  # can't skip the workflow
             (_RS.APPROVED, _RS.DRAFT),  # terminal
             (_RS.APPROVED, _RS.PENDING_REVIEW),  # terminal
-            (_RS.PENDING_REVIEW, _RS.ANNOTATING),  # no going back to annotating from review
             (_RS.DRAFT, _RS.PENDING_REVIEW),  # must annotate first
         ],
     )
