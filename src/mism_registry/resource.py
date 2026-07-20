@@ -96,7 +96,7 @@ class Resource:
     language_version: str = ""
     execution_notes: str = ""
     dependencies: list[Dependency] = dataclasses.field(default_factory=list)
-    containers: list[Container] = dataclasses.field(default_factory=list)
+    container: Container | None = None
     compute: Compute | None = None
     entry_points: list[EntryPoint] = dataclasses.field(default_factory=list)
     tests: TestSpec | None = None

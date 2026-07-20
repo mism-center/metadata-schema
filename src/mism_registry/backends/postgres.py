@@ -381,6 +381,12 @@ def _deser_containers(data: Any) -> list[Container]:
     return [Container(**c) for c in data] if data else []
 
 
+def _deser_argument(a: dict[str, Any]) -> Argument:
+    # JSON stores enums as a list; the frozen dataclass wants a tuple.
+    enums = a.get("enums")
+    return Argument(**{**a, "enums": tuple(enums) if enums is not None else None})
+
+
 def _deser_entry_points(data: Any) -> list[EntryPoint]:
     if not data:
         return []
@@ -388,7 +394,7 @@ def _deser_entry_points(data: Any) -> list[EntryPoint]:
         EntryPoint(
             command=e["command"],
             purpose=e.get("purpose", ""),
-            arguments=tuple(Argument(**a) for a in e.get("arguments", [])),
+            arguments=tuple(_deser_argument(a) for a in e.get("arguments", [])),
         )
         for e in data
     ]

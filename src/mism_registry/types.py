@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import dataclasses
+import re
+import shlex
 from typing import Any
 
 
@@ -148,6 +150,15 @@ class Argument:
     name: str
     description: str = ""
     default: Any = None
+    enums: tuple[str, ...] | None = None  # allowed values, if constrained
+    data_type: str | None = ""  # e.g. "int", "str", "path"
+    position: int | None = 0  # positional index; 0 = unassigned
+    user_can_override: bool | None = None  # may caller change this at run time
+
+    def __post_init__(self) -> None:
+        # position 0 means "unassigned" (see EntryPoint uniqueness check).
+        if self.position is not None and self.position < 0:
+            raise ValueError("Argument.position must be >= 0")
 
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
@@ -161,6 +172,38 @@ class EntryPoint:
     def __post_init__(self) -> None:
         if not self.command.strip():
             raise ValueError("EntryPoint.command must be non-empty")
+        # Enforce unique positions, ignoring the 0/None "unassigned" sentinel.
+        assigned = [a.position for a in self.arguments if a.position]
+        if len(assigned) != len(set(assigned)):
+            raise ValueError("EntryPoint argument positions must be unique")
+
+    def to_cli(self, values: dict[str, Any] | None = None) -> str:
+        """Render a runnable command string from arg values (falls back to
+        each argument's default). Requires canonical arg names: a flag token
+        like "--topology" or a bare positional name like "experiment_id" —
+        NOT doc labels like "--topology / -t"."""
+        values = values or {}
+        # Drop <placeholder> tokens from the base command; positionals fill them.
+        base = re.sub(r"\s*<[^>]*>", "", self.command).strip()
+        parts = [base]
+        # Positionals first, in position order; then options.
+        positional = sorted(
+            (a for a in self.arguments if a.position),
+            key=lambda a: a.position or 0,
+        )
+        options = [a for a in self.arguments if not a.position]
+        for arg in positional:
+            val = values.get(arg.name, arg.default)
+            if val is not None:
+                parts.append(shlex.quote(str(val)))
+        for arg in options:
+            val = values.get(arg.name, arg.default)
+            if arg.data_type == "bool":
+                if val:  # presence flag: emit token only when truthy
+                    parts.append(arg.name)
+            elif val is not None:  # valued option: token + value
+                parts.extend([arg.name, shlex.quote(str(val))])
+        return " ".join(parts)
 
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
