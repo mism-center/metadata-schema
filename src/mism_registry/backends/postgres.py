@@ -638,6 +638,12 @@ class PostgresRegistry:
             raise ResourceNotFoundError(resource_id)
         return resource_from_db(model)
 
+    def delete_resource(self, resource_id: str) -> None:
+        model = self._session.get(ResourceModel, resource_id)
+        if model is None:
+            raise ResourceNotFoundError(resource_id)
+        self._session.delete(model)
+
     def find_resources(
         self,
         *,
