@@ -242,6 +242,8 @@ class RunModel(Base):
     output_resource_ids: Mapped[list] = mapped_column(ARRAY(String), default=list)
     parameters: Mapped[Any] = mapped_column(JSONB, default=dict)
     environment: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    entrypoint: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    container: Mapped[Any] = mapped_column(JSONB, nullable=True)
     status: Mapped[RunStatus] = mapped_column(
         Enum(RunStatus, values_callable=_enum_values, name="runstatus", create_type=False),
         default=RunStatus.REGISTERED,
@@ -381,6 +383,12 @@ def _deser_containers(data: Any) -> list[Container]:
     return [Container(**c) for c in data] if data else []
 
 
+def _deser_argument(a: dict[str, Any]) -> Argument:
+    # JSON stores enums as a list; the frozen dataclass wants a tuple.
+    enums = a.get("enums")
+    return Argument(**{**a, "enums": tuple(enums) if enums is not None else None})
+
+
 def _deser_entry_points(data: Any) -> list[EntryPoint]:
     if not data:
         return []
@@ -388,7 +396,7 @@ def _deser_entry_points(data: Any) -> list[EntryPoint]:
         EntryPoint(
             command=e["command"],
             purpose=e.get("purpose", ""),
-            arguments=tuple(Argument(**a) for a in e.get("arguments", [])),
+            arguments=tuple(_deser_argument(a) for a in e.get("arguments", [])),
         )
         for e in data
     ]
@@ -555,6 +563,8 @@ def run_to_db(run: Run) -> RunModel:
         output_resource_ids=run.output_resource_ids,
         parameters=run.parameters,
         environment=_serialize_environment(run.environment),
+        entrypoint=dataclasses.asdict(run.entrypoint) if run.entrypoint else None,
+        container=dataclasses.asdict(run.container) if run.container else None,
         status=run.status,
         started_at=run.started_at,
         completed_at=run.completed_at,
@@ -576,6 +586,8 @@ def run_from_db(model: RunModel) -> Run:
         output_resource_ids=model.output_resource_ids or [],
         parameters=model.parameters or {},
         environment=_deserialize_environment(model.environment),
+        entrypoint=(_deser_entry_points([model.entrypoint])[0] if model.entrypoint else None),
+        container=Container(**model.container) if model.container else None,
         status=model.status,
         started_at=model.started_at,
         completed_at=model.completed_at,
@@ -904,6 +916,8 @@ class PostgresRegistry:
         model.output_resource_ids = run.output_resource_ids
         model.parameters = run.parameters
         model.environment = _serialize_environment(run.environment)
+        model.entrypoint = dataclasses.asdict(run.entrypoint) if run.entrypoint else None
+        model.container = dataclasses.asdict(run.container) if run.container else None
         model.status = run.status
         model.started_at = run.started_at
         model.completed_at = run.completed_at

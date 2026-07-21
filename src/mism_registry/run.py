@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .enums import RunStatus
-from .types import RunEnvironment
+from .types import Container, EntryPoint, RunEnvironment
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)
@@ -32,7 +32,10 @@ class Run:
     # Execution details
     parameters: dict[str, Any] = dataclasses.field(default_factory=dict)
     environment: RunEnvironment | None = None
+    entrypoint: EntryPoint | None = None
 
+    # Denormalized from the model's Container for reproducibility.
+    container: Container | None = None
     # Lifecycle
     started_at: datetime | None = None
     completed_at: datetime | None = None
