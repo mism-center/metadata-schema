@@ -586,9 +586,7 @@ def run_from_db(model: RunModel) -> Run:
         output_resource_ids=model.output_resource_ids or [],
         parameters=model.parameters or {},
         environment=_deserialize_environment(model.environment),
-        entrypoint=(
-            _deser_entry_points([model.entrypoint])[0] if model.entrypoint else None
-        ),
+        entrypoint=(_deser_entry_points([model.entrypoint])[0] if model.entrypoint else None),
         container=Container(**model.container) if model.container else None,
         status=model.status,
         started_at=model.started_at,

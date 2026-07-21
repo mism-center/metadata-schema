@@ -62,9 +62,7 @@ def validate_registration_approved(resource: Resource) -> None:
         )
 
 
-def validate_run_arguments(
-    entry_point: EntryPoint, arguments: dict[str, object]
-) -> None:
+def validate_run_arguments(entry_point: EntryPoint, arguments: dict[str, object]) -> None:
     """Validate caller-supplied argument values against an entry point's
     declared Arguments. Injection defense: the caller supplies only VALUES
     keyed by declared arg names — never command/flag strings.
@@ -87,9 +85,7 @@ def validate_run_arguments(
             )
         # Positional args (position > 0) must resolve to a value.
         if arg.position and value is None:
-            raise ValidationError(
-                f"Positional argument '{arg.name}' requires a value"
-            )
+            raise ValidationError(f"Positional argument '{arg.name}' requires a value")
 
 
 def normalize_tags(tags: list[str]) -> list[str]:

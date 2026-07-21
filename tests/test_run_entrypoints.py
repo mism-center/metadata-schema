@@ -84,8 +84,10 @@ class TestEntryPointsInRuns:
 
     def test_render_cli_uses_defaults(self, registry, model_with_entrypoints):
         run = prepare_run(
-            registry, model_id=model_with_entrypoints.id,
-            input_resource_ids=[], entrypoint_index=0,
+            registry,
+            model_id=model_with_entrypoints.id,
+            input_resource_ids=[],
+            entrypoint_index=0,
         )
         # bool default False -> omitted; int default 5 -> emitted
         assert run.entrypoint.to_cli(run.parameters) == (
@@ -94,8 +96,11 @@ class TestEntryPointsInRuns:
 
     def test_arguments_override_defaults(self, registry, model_with_entrypoints):
         run = prepare_run(
-            registry, model_id=model_with_entrypoints.id, input_resource_ids=[],
-            entrypoint_index=0, arguments={"--variable": True, "--flagella": 3},
+            registry,
+            model_id=model_with_entrypoints.id,
+            input_resource_ids=[],
+            entrypoint_index=0,
+            arguments={"--variable": True, "--flagella": 3},
         )
         assert run.entrypoint.to_cli(run.parameters) == (
             "python chemotaxis/composites/chemotaxis_flagella.py --variable --flagella 3"
@@ -103,8 +108,11 @@ class TestEntryPointsInRuns:
 
     def test_positional_with_enum(self, registry, model_with_entrypoints):
         run = prepare_run(
-            registry, model_id=model_with_entrypoints.id, input_resource_ids=[],
-            entrypoint_index=1, arguments={"experiment_id": "7b"},
+            registry,
+            model_id=model_with_entrypoints.id,
+            input_resource_ids=[],
+            entrypoint_index=1,
+            arguments={"experiment_id": "7b"},
         )
         # <experiment_id> placeholder stripped; value appended positionally
         assert run.entrypoint.to_cli(run.parameters) == (
@@ -113,7 +121,9 @@ class TestEntryPointsInRuns:
 
     def test_no_entrypoint_still_inherits_container(self, registry, model_with_entrypoints):
         run = prepare_run(
-            registry, model_id=model_with_entrypoints.id, input_resource_ids=[],
+            registry,
+            model_id=model_with_entrypoints.id,
+            input_resource_ids=[],
         )
         assert run.entrypoint is None
         assert run.container.image_name == "chemo:1"
@@ -124,42 +134,57 @@ class TestEntryPointsInRuns:
         # A path value containing a space + shell chars is shlex-quoted, not
         # interpreted — the caller cannot break out of the argument slot.
         run = prepare_run(
-            registry, model_id=model_with_entrypoints.id, input_resource_ids=[],
-            entrypoint_index=0, arguments={"--flagella": "5; rm -rf /"},
+            registry,
+            model_id=model_with_entrypoints.id,
+            input_resource_ids=[],
+            entrypoint_index=0,
+            arguments={"--flagella": "5; rm -rf /"},
         )
         assert "'5; rm -rf /'" in run.entrypoint.to_cli(run.parameters)
 
     def test_unknown_argument_rejected(self, registry, model_with_entrypoints):
         with pytest.raises(ValidationError, match="Unknown argument"):
             prepare_run(
-                registry, model_id=model_with_entrypoints.id, input_resource_ids=[],
-                entrypoint_index=0, arguments={"--bogus": 1},
+                registry,
+                model_id=model_with_entrypoints.id,
+                input_resource_ids=[],
+                entrypoint_index=0,
+                arguments={"--bogus": 1},
             )
 
     def test_enum_violation_rejected(self, registry, model_with_entrypoints):
         with pytest.raises(ValidationError, match="not in allowed values"):
             prepare_run(
-                registry, model_id=model_with_entrypoints.id, input_resource_ids=[],
-                entrypoint_index=1, arguments={"experiment_id": "nope"},
+                registry,
+                model_id=model_with_entrypoints.id,
+                input_resource_ids=[],
+                entrypoint_index=1,
+                arguments={"experiment_id": "nope"},
             )
 
     def test_missing_positional_rejected(self, registry, model_with_entrypoints):
         with pytest.raises(ValidationError, match="Positional argument"):
             prepare_run(
-                registry, model_id=model_with_entrypoints.id, input_resource_ids=[],
+                registry,
+                model_id=model_with_entrypoints.id,
+                input_resource_ids=[],
                 entrypoint_index=1,
             )
 
     def test_out_of_range_index_rejected(self, registry, model_with_entrypoints):
         with pytest.raises(ValidationError, match="out of range"):
             prepare_run(
-                registry, model_id=model_with_entrypoints.id, input_resource_ids=[],
+                registry,
+                model_id=model_with_entrypoints.id,
+                input_resource_ids=[],
                 entrypoint_index=99,
             )
 
     def test_arguments_without_entrypoint_rejected(self, registry, model_with_entrypoints):
         with pytest.raises(ValidationError, match="no entrypoint_index"):
             prepare_run(
-                registry, model_id=model_with_entrypoints.id, input_resource_ids=[],
+                registry,
+                model_id=model_with_entrypoints.id,
+                input_resource_ids=[],
                 arguments={"--flagella": 3},
             )
