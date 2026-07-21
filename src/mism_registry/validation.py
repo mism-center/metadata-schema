@@ -16,7 +16,7 @@ from .errors import (
     ValidationError,
 )
 from .resource import Resource
-from .types import IOSpec
+from .types import EntryPoint, IOSpec
 
 
 def validate_resource_required_fields(resource: Resource) -> None:
@@ -60,6 +60,36 @@ def validate_registration_approved(resource: Resource) -> None:
             f"'{resource.registration_status.value}', expected 'approved'. "
             f"Complete metadata review and approval before running."
         )
+
+
+def validate_run_arguments(
+    entry_point: EntryPoint, arguments: dict[str, object]
+) -> None:
+    """Validate caller-supplied argument values against an entry point's
+    declared Arguments. Injection defense: the caller supplies only VALUES
+    keyed by declared arg names — never command/flag strings.
+
+    Rejects unknown names, enforces enum membership, requires every
+    positional argument to have a value (supplied or via a non-null default).
+    """
+    by_name = {a.name: a for a in entry_point.arguments}
+    for name in arguments:
+        if name not in by_name:
+            raise ValidationError(
+                f"Unknown argument '{name}' for entry point '{entry_point.command}'"
+            )
+    for arg in entry_point.arguments:
+        supplied = arg.name in arguments
+        value = arguments[arg.name] if supplied else arg.default
+        if arg.enums is not None and value is not None and value not in arg.enums:
+            raise ValidationError(
+                f"Argument '{arg.name}'={value!r} not in allowed values {arg.enums}"
+            )
+        # Positional args (position > 0) must resolve to a value.
+        if arg.position and value is None:
+            raise ValidationError(
+                f"Positional argument '{arg.name}' requires a value"
+            )
 
 
 def normalize_tags(tags: list[str]) -> list[str]:

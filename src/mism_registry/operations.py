@@ -18,7 +18,7 @@ from .protocol import Registry
 from .resource import Resource
 from .run import Run
 from .run_detail import ModelRunSummary
-from .types import Author, IOSpec, Publication, RunEnvironment
+from .types import Author, Container, EntryPoint, IOSpec, Publication, RunEnvironment
 from .validation import (
     check_iospec_handshake,
     validate_execution_fields,
@@ -26,6 +26,7 @@ from .validation import (
     validate_registration_status_transition,
     validate_resource_is_active,
     validate_resource_required_fields,
+    validate_run_arguments,
     validate_run_status_transition,
 )
 
@@ -99,6 +100,8 @@ def register_model(
     size_bytes: int | None = None,
     execution_ref: str = "",
     io_spec: IOSpec | None = None,
+    entry_points: list[EntryPoint] | None = None,
+    containers: list[Container] | None = None,
     external_ids: dict[str, str] | None = None,
     license: str = "",
     owner: str = "",
@@ -126,6 +129,8 @@ def register_model(
         execution_type=execution_type,
         execution_ref=execution_ref,
         io_spec=io_spec,
+        entry_points=entry_points or [],
+        containers=containers or [],
         description=description,
         version=version,
         format_tags=format_tags or [],
@@ -248,6 +253,8 @@ def prepare_run(
     *,
     model_id: str,
     input_resource_ids: list[str],
+    entrypoint_index: int | None = None,
+    arguments: dict[str, Any] | None = None,
     parameters: dict[str, Any] | None = None,
     environment: RunEnvironment | None = None,
     triggered_by: str = "",
@@ -257,6 +264,12 @@ def prepare_run(
 
     Validates model exists and is active, inputs exist and are active,
     and performs IOSpec handshake if available.
+
+    An entry point is selected by index (never by a caller-supplied command
+    string — injection defense). ``arguments`` are VALUES keyed by the
+    declared argument names of that entry point; they are validated against
+    the entry point's Argument definitions. The model's Container is
+    denormalized onto the run for reproducibility.
     """
     model = registry.get_resource(model_id)
     if model.resource_type not in (ResourceType.MODEL, ResourceType.TOOL):
@@ -266,6 +279,19 @@ def prepare_run(
     validate_resource_is_active(model)
     # Registration gate: only approved models are executable.
     validate_registration_approved(model)
+
+    entrypoint = None
+    arguments = arguments or {}
+    if entrypoint_index is not None:
+        if not 0 <= entrypoint_index < len(model.entry_points):
+            raise ValidationError(
+                f"entrypoint_index {entrypoint_index} out of range "
+                f"(model has {len(model.entry_points)} entry points)"
+            )
+        entrypoint = model.entry_points[entrypoint_index]
+        validate_run_arguments(entrypoint, arguments)
+    elif arguments:
+        raise ValidationError("arguments given but no entrypoint_index selected")
 
     input_resources = []
     for rid in input_resource_ids:
@@ -286,8 +312,12 @@ def prepare_run(
         model_id=model_id,
         model_version=model.version,
         input_resource_ids=list(input_resource_ids),
-        parameters=parameters or {},
+        entrypoint=entrypoint,
+        parameters={**(parameters or {}), **arguments},
         environment=environment,
+        # ponytail: first recipe wins; match by execution_type if a model
+        # ever ships multiple containers the run must choose between.
+        container=(model.containers[0] if model.containers else None),
         status=RunStatus.REGISTERED,
         triggered_by=triggered_by,
         notes=notes,
