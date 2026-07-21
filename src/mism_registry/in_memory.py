@@ -37,6 +37,11 @@ class InMemoryRegistry:
             raise ResourceNotFoundError(resource_id)
         return copy.deepcopy(self._resources[resource_id])
 
+    def delete_resource(self, resource_id: str) -> None:
+        if resource_id not in self._resources:
+            raise ResourceNotFoundError(resource_id)
+        del self._resources[resource_id]
+
     def find_resources(
         self,
         *,

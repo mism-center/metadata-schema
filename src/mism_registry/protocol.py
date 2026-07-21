@@ -22,6 +22,8 @@ class Registry(Protocol):
 
     def get_resource(self, resource_id: str) -> Resource: ...
 
+    def delete_resource(self, resource_id: str) -> None: ...
+
     def find_resources(
         self,
         *,
