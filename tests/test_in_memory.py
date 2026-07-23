@@ -264,6 +264,26 @@ class TestFindRuns:
         results = registry.find_runs(status=RunStatus.REGISTERED)
         assert len(results) == 1
 
+    def test_find_by_triggered_by(self, registry: InMemoryRegistry):
+        registry.create_run(Run(model_id="m1", triggered_by="user-1"))
+        registry.create_run(Run(model_id="m1", triggered_by="user-2"))
+        results = registry.find_runs(triggered_by="user-1")
+        assert len(results) == 1
+        assert results[0].triggered_by == "user-1"
+
+    def test_find_by_triggered_by_and_status(self, registry: InMemoryRegistry):
+        r1 = Run(model_id="m1", triggered_by="user-1")
+        r1.status = RunStatus.RUNNING
+        registry.create_run(r1)
+        r2 = Run(model_id="m1", triggered_by="user-1")  # registered
+        registry.create_run(r2)
+        r3 = Run(model_id="m1", triggered_by="user-2")
+        r3.status = RunStatus.RUNNING
+        registry.create_run(r3)
+        results = registry.find_runs(triggered_by="user-1", status=RunStatus.RUNNING)
+        assert len(results) == 1
+        assert results[0].id == r1.id
+
     def test_find_no_matches(self, registry: InMemoryRegistry):
         registry.create_run(Run(model_id="m1"))
         results = registry.find_runs(model_id="nonexistent")

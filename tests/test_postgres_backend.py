@@ -668,6 +668,33 @@ class TestFindRuns:
         assert len(results) == 1
         assert results[0].id == run_reg.id
 
+    def test_find_by_triggered_by(self, pg_registry):
+        model = _make_model(name="M-trig", location_uri="docker://m-trig")
+        pg_registry.register_resource(model)
+
+        mine = Run(model_id=model.id, triggered_by="user-1")
+        theirs = Run(model_id=model.id, triggered_by="user-2")
+        pg_registry.create_run(mine)
+        pg_registry.create_run(theirs)
+
+        results = pg_registry.find_runs(triggered_by="user-1")
+        assert [r.id for r in results] == [mine.id]
+
+    def test_find_combined_triggered_by_and_status(self, pg_registry):
+        """triggered_by + status together: AND logic."""
+        model = _make_model(name="M-trig-combo", location_uri="docker://m-trig-combo")
+        pg_registry.register_resource(model)
+
+        mine_running = Run(model_id=model.id, triggered_by="user-1", status=RunStatus.RUNNING)
+        mine_done = Run(model_id=model.id, triggered_by="user-1", status=RunStatus.COMPLETED)
+        theirs_running = Run(model_id=model.id, triggered_by="user-2", status=RunStatus.RUNNING)
+        pg_registry.create_run(mine_running)
+        pg_registry.create_run(mine_done)
+        pg_registry.create_run(theirs_running)
+
+        results = pg_registry.find_runs(triggered_by="user-1", status=RunStatus.RUNNING)
+        assert [r.id for r in results] == [mine_running.id]
+
     def test_find_no_matches(self, pg_registry):
         results = pg_registry.find_runs(model_id="nonexistent-model-id-xyz")
         assert results == []

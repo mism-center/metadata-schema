@@ -126,6 +126,7 @@ class InMemoryRegistry:
         model_id: str | None = None,
         input_resource_id: str | None = None,
         status: RunStatus | None = None,
+        triggered_by: str | None = None,
     ) -> list[Run]:
         results = list(self._runs.values())
         if model_id is not None:
@@ -134,6 +135,8 @@ class InMemoryRegistry:
             results = [r for r in results if input_resource_id in r.input_resource_ids]
         if status is not None:
             results = [r for r in results if r.status == status]
+        if triggered_by is not None:
+            results = [r for r in results if r.triggered_by == triggered_by]
         return [copy.deepcopy(r) for r in results]
 
     # ── Lineage methods ───────────────────────────────────────────────
