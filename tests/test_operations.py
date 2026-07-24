@@ -484,6 +484,25 @@ class TestDiscovery:
         results = find_runs(registry, model_id=sample_model.id)
         assert len(results) == 1
 
+    def test_find_runs_delegates_triggered_by(
+        self, registry: InMemoryRegistry, sample_dataset, sample_model
+    ):
+        prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+            triggered_by="user-1",
+        )
+        prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+            triggered_by="user-2",
+        )
+        results = find_runs(registry, triggered_by="user-1")
+        assert len(results) == 1
+        assert results[0].triggered_by == "user-1"
+
     def test_get_lineage_delegates(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         run = prepare_run(
             registry,

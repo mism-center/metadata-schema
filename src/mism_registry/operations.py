@@ -420,12 +420,14 @@ def find_runs(
     model_id: str | None = None,
     input_resource_id: str | None = None,
     status: RunStatus | None = None,
+    triggered_by: str | None = None,
 ) -> list[Run]:
-    """Search runs by model, input resource, or status."""
+    """Search runs by model, input resource, status, or triggering user."""
     return registry.find_runs(
         model_id=model_id,
         input_resource_id=input_resource_id,
         status=status,
+        triggered_by=triggered_by,
     )
 
 

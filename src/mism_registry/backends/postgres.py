@@ -934,6 +934,7 @@ class PostgresRegistry:
         model_id: str | None = None,
         input_resource_id: str | None = None,
         status: RunStatus | None = None,
+        triggered_by: str | None = None,
     ) -> list[Run]:
         stmt = select(RunModel)
         if model_id is not None:
@@ -942,6 +943,8 @@ class PostgresRegistry:
             stmt = stmt.where(RunModel.input_resource_ids.contains([input_resource_id]))
         if status is not None:
             stmt = stmt.where(RunModel.status == status)
+        if triggered_by is not None:
+            stmt = stmt.where(RunModel.triggered_by == triggered_by)
         results = self._session.execute(stmt).scalars().all()
         return [run_from_db(m) for m in results]
 

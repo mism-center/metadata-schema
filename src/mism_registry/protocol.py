@@ -53,6 +53,7 @@ class Registry(Protocol):
         model_id: str | None = None,
         input_resource_id: str | None = None,
         status: RunStatus | None = None,
+        triggered_by: str | None = None,
     ) -> list[Run]: ...
 
     def get_lineage(self, resource_id: str) -> list[Run]: ...
