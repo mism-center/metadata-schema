@@ -965,12 +965,18 @@ class PostgresRegistry:
         model_id: str,
         *,
         status: RunStatus | None = None,
+        triggered_by: str | None = None,
     ) -> ModelRunSummary:
-        """Fetch all runs for a model with hydrated input/output Resources.
+        """Fetch runs for a model with hydrated input/output Resources.
 
         Optimized for Postgres: fetches the model in one query, all runs
         in a second, and all referenced resources in a single batch
         ``WHERE id IN (...)`` query instead of N+1 calls.
+
+        ``triggered_by`` narrows to one user's runs in the query itself (hitting
+        ``ix_runs_triggered_by``), so a per-user view never loads other users'
+        runs — nor the resources they reference — into memory. Runs come back
+        newest-first by ``created_at``.
         """
         # 1. Fetch the model resource
         model_row = self._session.get(ResourceModel, model_id)
@@ -978,10 +984,13 @@ class PostgresRegistry:
             raise ResourceNotFoundError(model_id)
         model = resource_from_db(model_row)
 
-        # 2. Fetch all runs for this model
+        # 2. Fetch the matching runs for this model
         run_stmt = select(RunModel).where(RunModel.model_id == model_id)
         if status is not None:
             run_stmt = run_stmt.where(RunModel.status == status)
+        if triggered_by is not None:
+            run_stmt = run_stmt.where(RunModel.triggered_by == triggered_by)
+        run_stmt = run_stmt.order_by(RunModel.created_at.desc())
         run_rows = self._session.execute(run_stmt).scalars().all()
         runs = [run_from_db(r) for r in run_rows]
 

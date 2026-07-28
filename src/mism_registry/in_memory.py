@@ -158,10 +158,16 @@ class InMemoryRegistry:
         model_id: str,
         *,
         status: RunStatus | None = None,
+        triggered_by: str | None = None,
     ) -> ModelRunSummary:
-        """Fetch all runs for a model with hydrated input/output Resources."""
+        """Fetch runs for a model with hydrated input/output Resources.
+
+        Newest-first by ``created_at`` so the ordering matches the Postgres
+        backend and callers can rely on it.
+        """
         model = self.get_resource(model_id)
-        runs = self.find_runs(model_id=model_id, status=status)
+        runs = self.find_runs(model_id=model_id, status=status, triggered_by=triggered_by)
+        runs.sort(key=lambda r: r.created_at, reverse=True)
 
         # Collect unique resource IDs and batch-fetch
         all_ids: set[str] = set()

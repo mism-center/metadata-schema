@@ -65,6 +65,7 @@ class Registry(Protocol):
         model_id: str,
         *,
         status: RunStatus | None = None,
+        triggered_by: str | None = None,
     ) -> ModelRunSummary: ...
 
     def get_latest_version(self, resource_id: str) -> Resource | None: ...

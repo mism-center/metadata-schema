@@ -584,6 +584,75 @@ class TestGetModelRunDetails:
         summary = get_model_run_details(registry, model_id=sample_model.id)
         assert len(summary.runs) == 2
 
+    def test_filter_by_triggered_by(
+        self, registry: InMemoryRegistry, sample_dataset, sample_model
+    ):
+        mine = prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+            triggered_by="alice",
+        )
+        prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+            triggered_by="bob",
+        )
+
+        summary = get_model_run_details(
+            registry, model_id=sample_model.id, triggered_by="alice"
+        )
+
+        assert [d.run.id for d in summary.runs] == [mine.id]
+
+    def test_omitting_triggered_by_returns_every_user(
+        self, registry: InMemoryRegistry, sample_dataset, sample_model
+    ):
+        for user in ("alice", "bob"):
+            prepare_run(
+                registry,
+                model_id=sample_model.id,
+                input_resource_ids=[sample_dataset.id],
+                triggered_by=user,
+            )
+
+        summary = get_model_run_details(registry, model_id=sample_model.id)
+
+        assert len(summary.runs) == 2
+
+    def test_triggered_by_without_matches_still_returns_the_model(
+        self, registry: InMemoryRegistry, sample_dataset, sample_model
+    ):
+        prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+            triggered_by="alice",
+        )
+
+        summary = get_model_run_details(
+            registry, model_id=sample_model.id, triggered_by="carol"
+        )
+
+        assert summary.model.id == sample_model.id
+        assert summary.runs == []
+
+    def test_runs_are_newest_first(
+        self, registry: InMemoryRegistry, sample_dataset, sample_model
+    ):
+        for _ in range(3):
+            prepare_run(
+                registry,
+                model_id=sample_model.id,
+                input_resource_ids=[sample_dataset.id],
+            )
+
+        summary = get_model_run_details(registry, model_id=sample_model.id)
+
+        stamps = [d.run.created_at for d in summary.runs]
+        assert stamps == sorted(stamps, reverse=True)
+
     def test_filter_by_status(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         run1 = prepare_run(
             registry,
