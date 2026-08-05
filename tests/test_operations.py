@@ -600,9 +600,7 @@ class TestGetModelRunDetails:
             triggered_by="bob",
         )
 
-        summary = get_model_run_details(
-            registry, model_id=sample_model.id, triggered_by="alice"
-        )
+        summary = get_model_run_details(registry, model_id=sample_model.id, triggered_by="alice")
 
         assert [d.run.id for d in summary.runs] == [mine.id]
 
@@ -631,16 +629,12 @@ class TestGetModelRunDetails:
             triggered_by="alice",
         )
 
-        summary = get_model_run_details(
-            registry, model_id=sample_model.id, triggered_by="carol"
-        )
+        summary = get_model_run_details(registry, model_id=sample_model.id, triggered_by="carol")
 
         assert summary.model.id == sample_model.id
         assert summary.runs == []
 
-    def test_runs_are_newest_first(
-        self, registry: InMemoryRegistry, sample_dataset, sample_model
-    ):
+    def test_runs_are_newest_first(self, registry: InMemoryRegistry, sample_dataset, sample_model):
         for _ in range(3):
             prepare_run(
                 registry,
