@@ -446,17 +446,25 @@ def get_model_run_details(
     *,
     model_id: str,
     status: RunStatus | None = None,
+    triggered_by: str | None = None,
 ) -> ModelRunSummary:
-    """Fetch all runs for a model, enriched with full Resource details.
+    """Fetch runs for a model, enriched with full Resource details.
 
     Returns the model Resource and a list of ModelRunDetail objects, each
     containing the Run plus hydrated input and output Resources.  Designed
     to populate a "Model Runs" page in a single call.
 
+    Runs come back newest-first by ``created_at``, matching
+    :func:`find_user_run_details`.
+
     Args:
         registry: The registry backend to query.
         model_id: ID of a MODEL or TOOL resource.
         status: Optional filter — only include runs with this status.
+        triggered_by: Optional filter — only include runs this user triggered.
+            Callers serving a single user's view should always pass this, so
+            other users' runs are never hydrated in the first place rather
+            than being filtered out downstream.
 
     Raises:
         ResourceNotFoundError: If *model_id* does not exist.
@@ -469,7 +477,7 @@ def get_model_run_details(
             f"Resource '{model_id}' is a {model.resource_type.value}, not a model or tool"
         )
 
-    return registry.get_model_run_details(model_id, status=status)
+    return registry.get_model_run_details(model_id, status=status, triggered_by=triggered_by)
 
 
 def get_latest_version(registry: Registry, resource_id: str) -> Resource | None:
