@@ -284,21 +284,42 @@ _FILTER_COLUMN_MAP: dict[str, Any] = {
     "owner": ResourceModel.owner,
     "organization": ResourceModel.organization,
     "license": ResourceModel.license,
+    "determinism": ResourceModel.determinism,
+    "time_dynamics": ResourceModel.time_dynamics,
+    "spatial": ResourceModel.spatial,
+    "multiscale": ResourceModel.multiscale,
     "organisms": ResourceModel.organisms,
     "domains": ResourceModel.domains,
     "model_scales": ResourceModel.model_scales,
     "format_tags": ResourceModel.format_tags,
+    "model_class": ResourceModel.model_class,
+    "formalism": ResourceModel.formalism,
+    "infectious_agents": ResourceModel.infectious_agents,
+    "health_conditions": ResourceModel.health_conditions,
+    "biological_processes": ResourceModel.biological_processes,
+    "molecular_entities": ResourceModel.molecular_entities,
+    "proteins_genes": ResourceModel.proteins_genes,
     "created_at": ResourceModel.created_at,
     "updated_at": ResourceModel.updated_at,
     "date_published": ResourceModel.date_published,
 }
 
+# Which columns need `unnest` for aggregation and `overlap`/`contains` for
+# filtering. Must stay in step with the "array" entries in FILTERABLE_FIELDS —
+# see the consistency test in tests/test_search_fields.py.
 _ARRAY_FIELDS: frozenset[str] = frozenset(
     {
         "organisms",
         "domains",
         "model_scales",
         "format_tags",
+        "model_class",
+        "formalism",
+        "infectious_agents",
+        "health_conditions",
+        "biological_processes",
+        "molecular_entities",
+        "proteins_genes",
     }
 )
 
