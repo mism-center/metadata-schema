@@ -2,6 +2,7 @@
 
 from mism_registry import (
     ExecutionType,
+    ImageReviewStatus,
     ResourceRegistrationStatus,
     ResourceType,
     ResourceVersionStatus,
@@ -93,3 +94,21 @@ class TestRunStatus:
 
     def test_is_str_subclass(self):
         assert isinstance(RunStatus.COMPLETED, str)
+
+
+class TestImageReviewStatus:
+    def test_members(self):
+        expected = {
+            "not_applicable",
+            "pending_image_check",
+            "image_approved",
+            "image_rejected",
+        }
+        assert {s.value for s in ImageReviewStatus} == expected
+
+    def test_values_are_lowercase(self):
+        for member in ImageReviewStatus:
+            assert member.value == member.value.lower()
+
+    def test_is_str_subclass(self):
+        assert isinstance(ImageReviewStatus.IMAGE_APPROVED, str)

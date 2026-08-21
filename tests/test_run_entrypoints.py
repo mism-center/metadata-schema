@@ -12,10 +12,12 @@ import pytest
 
 from mism_registry import (
     ExecutionType,
+    ImageReviewStatus,
     InMemoryRegistry,
     ResourceRegistrationStatus,
     prepare_run,
     register_model,
+    set_image_review_status,
     set_registration_status,
 )
 from mism_registry.errors import ValidationError
@@ -67,7 +69,20 @@ def model_with_entrypoints(registry: InMemoryRegistry):
             ),
         ],
     )
-    return _approve(registry, model)
+    model = _approve(registry, model)
+    # This fixture ships a Container, so the image-check gate also needs
+    # clearing before prepare_run will allow it (mirrors an already-vetted,
+    # ready-to-run model — these tests are about entry-point rendering, not
+    # about the image-review workflow itself).
+    set_image_review_status(
+        registry, resource_id=model.id, target=ImageReviewStatus.PENDING_IMAGE_CHECK
+    )
+    return set_image_review_status(
+        registry,
+        resource_id=model.id,
+        target=ImageReviewStatus.IMAGE_APPROVED,
+        reviewed_by="test-reviewer",
+    )
 
 
 class TestEntryPointsInRuns:

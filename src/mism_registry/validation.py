@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 
 from .enums import (
+    ImageReviewStatus,
     ResourceRegistrationStatus,
     ResourceType,
     ResourceVersionStatus,
@@ -59,6 +60,16 @@ def validate_registration_approved(resource: Resource) -> None:
             f"Resource '{resource.id}' has registration_status "
             f"'{resource.registration_status.value}', expected 'approved'. "
             f"Complete metadata review and approval before running."
+        )
+
+
+def validate_image_approved_if_shipped(resource: Resource) -> None:
+    """If a resource ships a Container recipe, its image must be approved before use."""
+    if resource.containers and resource.image_review_status != ImageReviewStatus.IMAGE_APPROVED:
+        raise ValidationError(
+            f"Resource '{resource.id}' ships a container recipe but has image_review_status "
+            f"'{resource.image_review_status.value}', expected 'image_approved'. "
+            f"Complete Dockerfile/image review before running."
         )
 
 
@@ -156,4 +167,25 @@ def validate_registration_status_transition(
     if target not in _VALID_REGISTRATION_TRANSITIONS.get(current, set()):
         raise InvalidStateTransitionError(
             f"Cannot transition registration from {current.value} to {target.value}"
+        )
+
+
+# Legal state transitions for the Dockerfile/image review workflow (MISM-291).
+_I = ImageReviewStatus
+_VALID_IMAGE_REVIEW_TRANSITIONS: dict[ImageReviewStatus, set[ImageReviewStatus]] = {
+    _I.NOT_APPLICABLE: {_I.PENDING_IMAGE_CHECK},
+    _I.PENDING_IMAGE_CHECK: {_I.IMAGE_APPROVED, _I.IMAGE_REJECTED},
+    _I.IMAGE_APPROVED: {_I.PENDING_IMAGE_CHECK},  # resubmitting a replacement image
+    _I.IMAGE_REJECTED: {_I.PENDING_IMAGE_CHECK},  # manual resubmission only — no auto bounceback
+}
+
+
+def validate_image_review_status_transition(
+    current: ImageReviewStatus,
+    target: ImageReviewStatus,
+) -> None:
+    """Raise InvalidStateTransitionError if the image-review transition is illegal."""
+    if target not in _VALID_IMAGE_REVIEW_TRANSITIONS.get(current, set()):
+        raise InvalidStateTransitionError(
+            f"Cannot transition image_review_status from {current.value} to {target.value}"
         )

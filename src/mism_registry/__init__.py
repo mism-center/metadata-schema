@@ -3,6 +3,7 @@
 from ._version import __version__
 from .enums import (
     ExecutionType,
+    ImageReviewStatus,
     ResourceRegistrationStatus,
     ResourceType,
     ResourceVersionStatus,
@@ -33,8 +34,10 @@ from .operations import (
     prepare_run,
     register_dataset,
     register_model,
+    set_image_review_status,
     set_registration_status,
     start_run,
+    submit_container_image,
 )
 from .protocol import Registry
 from .resource import Resource
@@ -58,6 +61,7 @@ __all__ = [
     "ResourceVersionStatus",
     "ResourceRegistrationStatus",
     "RunStatus",
+    "ImageReviewStatus",
     # Data model
     "Author",
     "Publication",
@@ -91,6 +95,8 @@ __all__ = [
     "register_model",
     "create_new_version",
     "set_registration_status",
+    "submit_container_image",
+    "set_image_review_status",
     "prepare_run",
     "start_run",
     "complete_run",

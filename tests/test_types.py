@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 
 from mism_registry import IOSlot, IOSpec, RunEnvironment
-from mism_registry.types import Author, Publication
+from mism_registry.types import Author, Container, Publication
 
 
 class TestAuthor:
@@ -148,6 +148,29 @@ class TestIOSpec:
         spec = IOSpec()
         with pytest.raises(dataclasses.FrozenInstanceError):
             spec.inputs = ()  # type: ignore[misc]
+
+
+class TestContainer:
+    def test_creation(self):
+        c = Container(kind="docker", file="Dockerfile", image_name="mism/model:1.0")
+        assert c.kind == "docker"
+        assert c.file == "Dockerfile"
+        assert c.image_name == "mism/model:1.0"
+        assert c.registry == ""
+
+    def test_registry_field(self):
+        c = Container(
+            kind="docker",
+            file="Dockerfile",
+            image_name="model:1.0",
+            registry="ghcr.io/mism-center",
+        )
+        assert c.registry == "ghcr.io/mism-center"
+
+    def test_frozen(self):
+        c = Container(kind="docker")
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            c.image_name = "other"  # type: ignore[misc]
 
 
 class TestRunEnvironment:
