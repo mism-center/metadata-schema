@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from mism_registry import (
     Author,
     ExecutionType,
+    ImageReviewStatus,
     IOSlot,
     IOSpec,
     Publication,
@@ -272,6 +273,20 @@ class TestRegisterAndRetrieve:
         with pytest.raises(DuplicateResourceError):
             pg_registry.register_resource(r)
 
+    def test_image_review_defaults_round_trip(self, pg_registry):
+        """A freshly registered model has no image review state yet (MISM-291)."""
+        r = _make_model()
+        pg_registry.register_resource(r)
+        retrieved = pg_registry.get_resource(r.id)
+
+        assert retrieved.image_review_status == ImageReviewStatus.NOT_APPLICABLE
+        assert retrieved.image_reviewed_by == ""
+        assert retrieved.image_reviewed_at is None
+        assert retrieved.image_rejection_reason == ""
+        assert retrieved.metadata_reviewed_by == ""
+        assert retrieved.metadata_reviewed_at is None
+        assert retrieved.metadata_rejection_reason == ""
+
 
 # ── Test: IOSpec Round-Trip ──────────────────────────────────────────
 
@@ -426,6 +441,62 @@ class TestFindResources:
         assert "D-combo-wrong-owner" not in names
 
 
+# ── Test: Search Resources (structured filters) ──────────────────────
+
+
+class TestSearchResourcesImageReviewFilter:
+    """Exercises search_resources() end-to-end for image_review_status —
+    the actual query path a future 'pending image review' endpoint depends
+    on, not just the static FILTERABLE_FIELDS/_FILTER_COLUMN_MAP consistency
+    checked in test_search_fields.py."""
+
+    def test_filters_by_pending_image_check(self, pg_registry):
+        from mism_registry.search import FieldFilter, SearchQuery
+
+        pending = _make_model(name="Pending Model", location_uri="docker://pending")
+        pending.image_review_status = ImageReviewStatus.PENDING_IMAGE_CHECK
+        pg_registry.register_resource(pending)
+
+        approved = _make_model(name="Approved Model", location_uri="docker://approved")
+        approved.image_review_status = ImageReviewStatus.IMAGE_APPROVED
+        pg_registry.register_resource(approved)
+
+        result = pg_registry.search_resources(
+            SearchQuery(
+                filters=(
+                    FieldFilter(field="image_review_status", op="eq", value="pending_image_check"),
+                ),
+            )
+        )
+
+        names = {r.name for r in result.resources}
+        assert names == {"Pending Model"}
+        assert result.total == 1
+
+    def test_aggregates_by_image_review_status(self, pg_registry):
+        from mism_registry.search import FieldFilter, SearchQuery
+
+        for status in (
+            ImageReviewStatus.PENDING_IMAGE_CHECK,
+            ImageReviewStatus.PENDING_IMAGE_CHECK,
+            ImageReviewStatus.IMAGE_APPROVED,
+        ):
+            m = _make_model(name=f"Model-{status.value}-{id(object())}")
+            m.image_review_status = status
+            pg_registry.register_resource(m)
+
+        result = pg_registry.search_resources(
+            SearchQuery(
+                filters=(FieldFilter(field="resource_type", op="eq", value="model"),),
+                agg_fields=("image_review_status",),
+            )
+        )
+
+        buckets = {b.key: b.count for b in result.aggs["image_review_status"]}
+        assert buckets.get("pending_image_check") == 2
+        assert buckets.get("image_approved") == 1
+
+
 # ── Test: Update Resource ────────────────────────────────────────────
 
 
@@ -450,6 +521,32 @@ class TestUpdateResource:
         r.id = "nonexistent-id"
         with pytest.raises(ResourceNotFoundError):
             pg_registry.update_resource(r)
+
+    def test_image_review_fields_round_trip_through_update(self, pg_registry):
+        """update_resource() has its own manual field-by-field mapping (distinct
+        from resource_to_db) — this guards against the review fields being
+        silently dropped there, the way containers/image_name etc. already are."""
+        from mism_registry.types import Container
+
+        r = _make_model(containers=[Container(kind="docker", image_name="model:v1")])
+        pg_registry.register_resource(r)
+
+        r.image_review_status = ImageReviewStatus.IMAGE_APPROVED
+        r.image_reviewed_by = "frank"
+        r.image_reviewed_at = datetime.now(timezone.utc)
+        r.image_rejection_reason = ""
+        r.metadata_reviewed_by = "erin"
+        r.metadata_reviewed_at = datetime.now(timezone.utc)
+        r.metadata_rejection_reason = "minor fix requested"
+        pg_registry.update_resource(r)
+
+        retrieved = pg_registry.get_resource(r.id)
+        assert retrieved.image_review_status == ImageReviewStatus.IMAGE_APPROVED
+        assert retrieved.image_reviewed_by == "frank"
+        assert retrieved.image_reviewed_at is not None
+        assert retrieved.metadata_reviewed_by == "erin"
+        assert retrieved.metadata_reviewed_at is not None
+        assert retrieved.metadata_rejection_reason == "minor fix requested"
 
 
 # ── Test: Run CRUD ───────────────────────────────────────────────────

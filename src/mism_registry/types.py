@@ -129,6 +129,7 @@ class Container:
     kind: str  # "docker" | "singularity"
     file: str = ""  # "Dockerfile" | "container.def"
     image_name: str = ""
+    registry: str = ""  # e.g. "ghcr.io/mism-center" — captured at image-check approval
 
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)

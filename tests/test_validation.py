@@ -4,6 +4,7 @@ import pytest
 
 from mism_registry import (
     ExecutionType,
+    ImageReviewStatus,
     IOSlot,
     IOSpec,
     Resource,
@@ -17,10 +18,13 @@ from mism_registry.errors import (
     IOSpecMismatchError,
     ValidationError,
 )
+from mism_registry.types import Container
 from mism_registry.validation import (
     check_iospec_handshake,
     normalize_tags,
     validate_execution_fields,
+    validate_image_approved_if_shipped,
+    validate_image_review_status_transition,
     validate_registration_approved,
     validate_registration_status_transition,
     validate_resource_is_active,
@@ -29,6 +33,7 @@ from mism_registry.validation import (
 )
 
 _RS = ResourceRegistrationStatus
+_I = ImageReviewStatus
 
 
 class TestValidateResourceRequiredFields:
@@ -177,6 +182,71 @@ class TestRegistrationStatusTransition:
     def test_illegal_transitions(self, current, target):
         with pytest.raises(InvalidStateTransitionError):
             validate_registration_status_transition(current, target)
+
+
+class TestValidateImageApprovedIfShipped:
+    def test_no_container_passes_regardless_of_status(self):
+        r = Resource(name="test", resource_type=ResourceType.MODEL, location_uri="s3://x")
+        assert r.containers == []
+        validate_image_approved_if_shipped(r)  # Should not raise
+
+    def test_container_and_approved_passes(self):
+        r = Resource(
+            name="test",
+            resource_type=ResourceType.MODEL,
+            location_uri="s3://x",
+            containers=[Container(kind="docker")],
+            image_review_status=ImageReviewStatus.IMAGE_APPROVED,
+        )
+        validate_image_approved_if_shipped(r)  # Should not raise
+
+    @pytest.mark.parametrize(
+        "image_status",
+        [
+            ImageReviewStatus.NOT_APPLICABLE,
+            ImageReviewStatus.PENDING_IMAGE_CHECK,
+            ImageReviewStatus.IMAGE_REJECTED,
+        ],
+    )
+    def test_container_and_not_approved_raises(self, image_status):
+        r = Resource(
+            name="test",
+            resource_type=ResourceType.MODEL,
+            location_uri="s3://x",
+            containers=[Container(kind="docker")],
+            image_review_status=image_status,
+        )
+        with pytest.raises(ValidationError, match="image_approved"):
+            validate_image_approved_if_shipped(r)
+
+
+class TestImageReviewStatusTransition:
+    @pytest.mark.parametrize(
+        "current,target",
+        [
+            (_I.NOT_APPLICABLE, _I.PENDING_IMAGE_CHECK),
+            (_I.PENDING_IMAGE_CHECK, _I.IMAGE_APPROVED),
+            (_I.PENDING_IMAGE_CHECK, _I.IMAGE_REJECTED),
+            (_I.IMAGE_APPROVED, _I.PENDING_IMAGE_CHECK),  # resubmitting a replacement image
+            (_I.IMAGE_REJECTED, _I.PENDING_IMAGE_CHECK),  # manual resubmission only
+        ],
+    )
+    def test_legal_transitions(self, current, target):
+        validate_image_review_status_transition(current, target)  # no raise
+
+    @pytest.mark.parametrize(
+        "current,target",
+        [
+            (_I.NOT_APPLICABLE, _I.IMAGE_APPROVED),  # can't skip submission + review
+            (_I.NOT_APPLICABLE, _I.IMAGE_REJECTED),
+            (_I.PENDING_IMAGE_CHECK, _I.NOT_APPLICABLE),
+            (_I.IMAGE_APPROVED, _I.IMAGE_REJECTED),  # must go through PENDING_IMAGE_CHECK again
+            (_I.IMAGE_REJECTED, _I.IMAGE_APPROVED),  # no auto bounceback — must resubmit first
+        ],
+    )
+    def test_illegal_transitions(self, current, target):
+        with pytest.raises(InvalidStateTransitionError):
+            validate_image_review_status_transition(current, target)
 
 
 class TestNormalizeTags:

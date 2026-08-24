@@ -9,6 +9,7 @@ from typing import Any
 
 from .enums import (
     ExecutionType,
+    ImageReviewStatus,
     ResourceRegistrationStatus,
     ResourceType,
     ResourceVersionStatus,
@@ -45,6 +46,9 @@ class Resource:
     # Registration workflow (upload -> annotate -> review -> approve).
     # Defaults to DRAFT; workflow promotes through annotating -> review -> approve.
     registration_status: ResourceRegistrationStatus = ResourceRegistrationStatus.DRAFT
+    metadata_reviewed_by: str = ""
+    metadata_reviewed_at: datetime | None = None
+    metadata_rejection_reason: str = ""
     new_version_of: str = ""
     superseded_by: str = ""
 
@@ -100,6 +104,12 @@ class Resource:
     compute: Compute | None = None
     entry_points: list[EntryPoint] = dataclasses.field(default_factory=list)
     tests: TestSpec | None = None
+
+    # Dockerfile/image review workflow (MISM-291) — only meaningful if `containers` is non-empty
+    image_review_status: ImageReviewStatus = ImageReviewStatus.NOT_APPLICABLE
+    image_reviewed_by: str = ""
+    image_reviewed_at: datetime | None = None
+    image_rejection_reason: str = ""
 
     # Rich I/O characterization (schema.md Section C)
     io: IODetail | None = None

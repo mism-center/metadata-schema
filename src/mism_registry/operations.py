@@ -8,6 +8,7 @@ from typing import Any
 
 from .enums import (
     ExecutionType,
+    ImageReviewStatus,
     ResourceRegistrationStatus,
     ResourceType,
     ResourceVersionStatus,
@@ -22,6 +23,8 @@ from .types import Author, Container, EntryPoint, IOSpec, Publication, RunEnviro
 from .validation import (
     check_iospec_handshake,
     validate_execution_fields,
+    validate_image_approved_if_shipped,
+    validate_image_review_status_transition,
     validate_registration_approved,
     validate_registration_status_transition,
     validate_resource_is_active,
@@ -230,6 +233,8 @@ def set_registration_status(
     *,
     resource_id: str,
     target: ResourceRegistrationStatus,
+    reviewed_by: str = "",
+    reason: str = "",
 ) -> Resource:
     """Advance a resource through the registration workflow.
 
@@ -237,10 +242,67 @@ def set_registration_status(
     (draft -> annotating -> pending_review -> approved, with failure/reject
     branches) before persisting. Raises InvalidStateTransitionError on an
     illegal move.
+
+    ``reviewed_by``/``reason`` are optional and only meaningful for the
+    human-review transitions (pending_review -> approved/rejected); callers
+    driving purely mechanical transitions (e.g. draft -> annotating) can omit
+    them.
     """
     resource = registry.get_resource(resource_id)
     validate_registration_status_transition(resource.registration_status, target)
     resource.registration_status = target
+    if reviewed_by:
+        resource.metadata_reviewed_by = reviewed_by
+        resource.metadata_reviewed_at = datetime.now(timezone.utc)
+    resource.metadata_rejection_reason = reason
+    resource.updated_at = datetime.now(timezone.utc)
+    return registry.update_resource(resource)
+
+
+def submit_container_image(
+    registry: Registry,
+    *,
+    resource_id: str,
+    container: Container,
+) -> Resource:
+    """Submit a built Dockerfile/image for IMAGE_CHECK review (workflow step h/l).
+
+    Requires the resource's metadata registration to already be APPROVED.
+    Replaces any existing container recipe with this one and moves
+    image_review_status to PENDING_IMAGE_CHECK.
+    """
+    resource = registry.get_resource(resource_id)
+    validate_registration_approved(resource)
+    validate_image_review_status_transition(
+        resource.image_review_status, ImageReviewStatus.PENDING_IMAGE_CHECK
+    )
+    resource.containers = [container]
+    resource.image_review_status = ImageReviewStatus.PENDING_IMAGE_CHECK
+    resource.updated_at = datetime.now(timezone.utc)
+    return registry.update_resource(resource)
+
+
+def set_image_review_status(
+    registry: Registry,
+    *,
+    resource_id: str,
+    target: ImageReviewStatus,
+    reviewed_by: str = "",
+    reason: str = "",
+) -> Resource:
+    """Advance a resource through the Dockerfile/image review workflow.
+
+    Validates the transition against the legal state machine before
+    persisting. Caller (application layer) is responsible for authorization —
+    this function only enforces workflow-state legality, mirroring
+    set_registration_status.
+    """
+    resource = registry.get_resource(resource_id)
+    validate_image_review_status_transition(resource.image_review_status, target)
+    resource.image_review_status = target
+    resource.image_reviewed_by = reviewed_by
+    resource.image_rejection_reason = reason
+    resource.image_reviewed_at = datetime.now(timezone.utc)
     resource.updated_at = datetime.now(timezone.utc)
     return registry.update_resource(resource)
 
@@ -279,6 +341,8 @@ def prepare_run(
     validate_resource_is_active(model)
     # Registration gate: only approved models are executable.
     validate_registration_approved(model)
+    # Image-check gate: if a container recipe is shipped, its image must be approved.
+    validate_image_approved_if_shipped(model)
 
     entrypoint = None
     arguments = arguments or {}

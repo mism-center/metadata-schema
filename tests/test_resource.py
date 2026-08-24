@@ -5,6 +5,7 @@ from datetime import date, timezone
 
 from mism_registry import (
     ExecutionType,
+    ImageReviewStatus,
     IOSpec,
     Resource,
     ResourceRegistrationStatus,
@@ -44,8 +45,16 @@ class TestResource:
         assert r.version_status == ResourceVersionStatus.ACTIVE
         # Programmatic construction defaults to DRAFT (workflow promotes it).
         assert r.registration_status == ResourceRegistrationStatus.DRAFT
+        assert r.metadata_reviewed_by == ""
+        assert r.metadata_reviewed_at is None
+        assert r.metadata_rejection_reason == ""
         assert r.new_version_of == ""
         assert r.superseded_by == ""
+        # Image review workflow (MISM-291) — inert until a Container is shipped.
+        assert r.image_review_status == ImageReviewStatus.NOT_APPLICABLE
+        assert r.image_reviewed_by == ""
+        assert r.image_reviewed_at is None
+        assert r.image_rejection_reason == ""
         assert r.format_tags == []
         assert r.digest_sha256 == ""
         assert r.size_bytes is None
@@ -178,3 +187,29 @@ class TestResource:
         assert r.version_status == ResourceVersionStatus.SUPERSEDED
         assert r.new_version_of == "old-uuid"
         assert r.superseded_by == "new-uuid"
+
+    def test_metadata_review_fields(self):
+        r = Resource(
+            name="test",
+            resource_type=ResourceType.DATASET,
+            location_uri="s3://x",
+            registration_status=ResourceRegistrationStatus.REJECTED,
+            metadata_reviewed_by="erin",
+            metadata_rejection_reason="missing execution.yaml",
+        )
+        assert r.registration_status == ResourceRegistrationStatus.REJECTED
+        assert r.metadata_reviewed_by == "erin"
+        assert r.metadata_rejection_reason == "missing execution.yaml"
+
+    def test_image_review_fields(self):
+        r = Resource(
+            name="model",
+            resource_type=ResourceType.MODEL,
+            location_uri="docker://img",
+            image_review_status=ImageReviewStatus.IMAGE_REJECTED,
+            image_reviewed_by="frank",
+            image_rejection_reason="base image not pinned",
+        )
+        assert r.image_review_status == ImageReviewStatus.IMAGE_REJECTED
+        assert r.image_reviewed_by == "frank"
+        assert r.image_rejection_reason == "base image not pinned"

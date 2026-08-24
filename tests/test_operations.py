@@ -4,6 +4,7 @@ import pytest
 
 from mism_registry import (
     ExecutionType,
+    ImageReviewStatus,
     InMemoryRegistry,
     IOSlot,
     IOSpec,
@@ -28,8 +29,10 @@ from mism_registry import (
     prepare_run,
     register_dataset,
     register_model,
+    set_image_review_status,
     set_registration_status,
     start_run,
+    submit_container_image,
 )
 from mism_registry.errors import (
     InvalidStateTransitionError,
@@ -37,6 +40,7 @@ from mism_registry.errors import (
     ResourceNotFoundError,
     ValidationError,
 )
+from mism_registry.types import Container
 
 
 class TestRegisterDataset:
@@ -348,6 +352,53 @@ class TestPrepareRun:
                 model_id=model.id,
                 input_resource_ids=[dataset.id],
             )
+
+    def test_unapproved_image_rejected(self, registry: InMemoryRegistry, sample_model):
+        # Metadata is APPROVED, but the submitted image hasn't cleared IMAGE_CHECK yet.
+        submit_container_image(
+            registry,
+            resource_id=sample_model.id,
+            container=Container(kind="docker", file="Dockerfile", image_name="model:v1"),
+        )
+        with pytest.raises(ValidationError, match="image_approved"):
+            prepare_run(
+                registry,
+                model_id=sample_model.id,
+                input_resource_ids=[],
+            )
+
+    def test_approved_image_allows_run(
+        self, registry: InMemoryRegistry, sample_dataset, sample_model
+    ):
+        submit_container_image(
+            registry,
+            resource_id=sample_model.id,
+            container=Container(kind="docker", file="Dockerfile", image_name="model:v1"),
+        )
+        set_image_review_status(
+            registry,
+            resource_id=sample_model.id,
+            target=ImageReviewStatus.IMAGE_APPROVED,
+            reviewed_by="frank",
+        )
+        run = prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+        )
+        assert run.status == RunStatus.REGISTERED
+
+    def test_no_container_shipped_unaffected_by_image_gate(
+        self, registry: InMemoryRegistry, sample_dataset, sample_model
+    ):
+        # sample_model ships no Container at all — image gate must stay a no-op.
+        assert sample_model.containers == []
+        run = prepare_run(
+            registry,
+            model_id=sample_model.id,
+            input_resource_ids=[sample_dataset.id],
+        )
+        assert run.status == RunStatus.REGISTERED
 
     def test_superseded_input_rejected(self, registry: InMemoryRegistry):
         dataset = register_dataset(registry, name="Data", location_uri="s3://v1")
@@ -756,4 +807,133 @@ class TestSetRegistrationStatus:
                 registry,
                 resource_id=model.id,
                 target=ResourceRegistrationStatus.APPROVED,  # can't skip the workflow
+            )
+
+    def test_reviewer_stamped_on_transition(self, registry: InMemoryRegistry):
+        model = self._draft_model(registry)
+        model = set_registration_status(
+            registry, resource_id=model.id, target=ResourceRegistrationStatus.ANNOTATING
+        )
+        model = set_registration_status(
+            registry, resource_id=model.id, target=ResourceRegistrationStatus.PENDING_REVIEW
+        )
+        reviewed = set_registration_status(
+            registry,
+            resource_id=model.id,
+            target=ResourceRegistrationStatus.REJECTED,
+            reviewed_by="erin",
+            reason="missing execution.yaml",
+        )
+        assert reviewed.metadata_reviewed_by == "erin"
+        assert reviewed.metadata_reviewed_at is not None
+        assert reviewed.metadata_rejection_reason == "missing execution.yaml"
+
+    def test_omitting_reviewer_leaves_fields_unset(self, registry: InMemoryRegistry):
+        # Mechanical transitions (e.g. draft -> annotating) don't involve a human
+        # reviewer, so reviewed_by/reviewed_at should stay untouched.
+        model = self._draft_model(registry)
+        updated = set_registration_status(
+            registry, resource_id=model.id, target=ResourceRegistrationStatus.ANNOTATING
+        )
+        assert updated.metadata_reviewed_by == ""
+        assert updated.metadata_reviewed_at is None
+
+
+class TestSubmitContainerImage:
+    def test_happy_path(self, registry: InMemoryRegistry, sample_model):
+        container = Container(kind="docker", file="Dockerfile", image_name="model:v1")
+        updated = submit_container_image(
+            registry, resource_id=sample_model.id, container=container
+        )
+        assert updated.containers == [container]
+        assert updated.image_review_status == ImageReviewStatus.PENDING_IMAGE_CHECK
+
+    def test_requires_approved_metadata(self, registry: InMemoryRegistry):
+        model = register_model(
+            registry,
+            name="Unapproved",
+            location_uri="docker://img",
+            execution_type=ExecutionType.DOCKER,
+            io_spec=IOSpec(),
+        )
+        # Still DRAFT — metadata never approved.
+        with pytest.raises(ValidationError, match="approved"):
+            submit_container_image(
+                registry,
+                resource_id=model.id,
+                container=Container(kind="docker"),
+            )
+
+    def test_resubmission_after_rejection(self, registry: InMemoryRegistry, sample_model):
+        first = Container(kind="docker", image_name="model:v1")
+        submit_container_image(registry, resource_id=sample_model.id, container=first)
+        set_image_review_status(
+            registry,
+            resource_id=sample_model.id,
+            target=ImageReviewStatus.IMAGE_REJECTED,
+            reviewed_by="frank",
+            reason="base image not pinned",
+        )
+        second = Container(kind="docker", image_name="model:v2")
+        updated = submit_container_image(registry, resource_id=sample_model.id, container=second)
+        assert updated.containers == [second]
+        assert updated.image_review_status == ImageReviewStatus.PENDING_IMAGE_CHECK
+
+
+class TestSetImageReviewStatus:
+    def _submitted_model(self, registry: InMemoryRegistry, sample_model) -> Resource:
+        return submit_container_image(
+            registry,
+            resource_id=sample_model.id,
+            container=Container(kind="docker", image_name="model:v1"),
+        )
+
+    def test_approve(self, registry: InMemoryRegistry, sample_model):
+        self._submitted_model(registry, sample_model)
+        updated = set_image_review_status(
+            registry,
+            resource_id=sample_model.id,
+            target=ImageReviewStatus.IMAGE_APPROVED,
+            reviewed_by="frank",
+        )
+        assert updated.image_review_status == ImageReviewStatus.IMAGE_APPROVED
+        assert updated.image_reviewed_by == "frank"
+        assert updated.image_reviewed_at is not None
+
+    def test_reject(self, registry: InMemoryRegistry, sample_model):
+        self._submitted_model(registry, sample_model)
+        updated = set_image_review_status(
+            registry,
+            resource_id=sample_model.id,
+            target=ImageReviewStatus.IMAGE_REJECTED,
+            reviewed_by="frank",
+            reason="base image not pinned",
+        )
+        assert updated.image_review_status == ImageReviewStatus.IMAGE_REJECTED
+        assert updated.image_rejection_reason == "base image not pinned"
+
+    def test_illegal_transition_raises(self, registry: InMemoryRegistry, sample_model):
+        # sample_model has no container submitted yet — still NOT_APPLICABLE.
+        with pytest.raises(InvalidStateTransitionError):
+            set_image_review_status(
+                registry,
+                resource_id=sample_model.id,
+                target=ImageReviewStatus.IMAGE_APPROVED,  # can't skip PENDING_IMAGE_CHECK
+            )
+
+    def test_rejected_cannot_auto_bounce_to_approved(
+        self, registry: InMemoryRegistry, sample_model
+    ):
+        self._submitted_model(registry, sample_model)
+        set_image_review_status(
+            registry,
+            resource_id=sample_model.id,
+            target=ImageReviewStatus.IMAGE_REJECTED,
+            reviewed_by="frank",
+        )
+        with pytest.raises(InvalidStateTransitionError):
+            set_image_review_status(
+                registry,
+                resource_id=sample_model.id,
+                target=ImageReviewStatus.IMAGE_APPROVED,  # must resubmit first
             )

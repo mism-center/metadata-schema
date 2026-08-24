@@ -50,6 +50,7 @@ from sqlalchemy.orm import (
 
 from mism_registry.enums import (
     ExecutionType,
+    ImageReviewStatus,
     ResourceRegistrationStatus,
     ResourceType,
     ResourceVersionStatus,
@@ -142,6 +143,11 @@ class ResourceModel(Base):
         ForeignKey("resources.id"),
         nullable=True,
     )
+    metadata_reviewed_by: Mapped[str] = mapped_column(String(255), default="")
+    metadata_reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    metadata_rejection_reason: Mapped[str] = mapped_column(Text, default="")
 
     # Authorship & attribution
     authors: Mapped[Any] = mapped_column(JSONB, default=list)
@@ -199,6 +205,22 @@ class ResourceModel(Base):
     entry_points: Mapped[Any] = mapped_column(JSONB, default=list)
     tests: Mapped[Any] = mapped_column(JSONB, nullable=True)
 
+    # Dockerfile/image review workflow (MISM-291)
+    image_review_status: Mapped[ImageReviewStatus] = mapped_column(
+        Enum(
+            ImageReviewStatus,
+            values_callable=_enum_values,
+            name="imagereviewstatus",
+            create_type=False,
+        ),
+        default=ImageReviewStatus.NOT_APPLICABLE,
+    )
+    image_reviewed_by: Mapped[str] = mapped_column(String(255), default="")
+    image_reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    image_rejection_reason: Mapped[str] = mapped_column(Text, default="")
+
     # Rich I/O characterization (schema.md Section C)
     io: Mapped[Any] = mapped_column(JSONB, nullable=True)
 
@@ -223,6 +245,7 @@ class ResourceModel(Base):
         Index("ix_resources_version_status", "version_status"),
         Index("ix_resources_registration_status", "registration_status"),
         Index("ix_resources_owner", "owner"),
+        Index("ix_resources_image_review_status", "image_review_status"),
         Index("ix_resources_format_tags", "format_tags", postgresql_using="gin"),
         Index("ix_resources_organisms", "organisms", postgresql_using="gin"),
         Index("ix_resources_model_scales", "model_scales", postgresql_using="gin"),
@@ -280,6 +303,7 @@ _FILTER_COLUMN_MAP: dict[str, Any] = {
     "resource_type": ResourceModel.resource_type,
     "version_status": ResourceModel.version_status,
     "registration_status": ResourceModel.registration_status,
+    "image_review_status": ResourceModel.image_review_status,
     "execution_type": ResourceModel.execution_type,
     "owner": ResourceModel.owner,
     "organization": ResourceModel.organization,
@@ -464,6 +488,9 @@ def resource_to_db(resource: Resource) -> ResourceModel:
         version=resource.version,
         version_status=resource.version_status,
         registration_status=resource.registration_status,
+        metadata_reviewed_by=resource.metadata_reviewed_by,
+        metadata_reviewed_at=resource.metadata_reviewed_at,
+        metadata_rejection_reason=resource.metadata_rejection_reason,
         new_version_of=resource.new_version_of or None,
         superseded_by=resource.superseded_by or None,
         authors=_serialize_authors(resource.authors),
@@ -506,6 +533,10 @@ def resource_to_db(resource: Resource) -> ResourceModel:
         entry_points=_ser_list(resource.entry_points),
         tests=_ser_opt(resource.tests),
         io=_ser_opt(resource.io),
+        image_review_status=resource.image_review_status,
+        image_reviewed_by=resource.image_reviewed_by,
+        image_reviewed_at=resource.image_reviewed_at,
+        image_rejection_reason=resource.image_rejection_reason,
         owner=resource.owner,
         metadata_=resource.metadata,
         created_at=resource.created_at,
@@ -525,6 +556,9 @@ def resource_from_db(model: ResourceModel) -> Resource:
         version=model.version,
         version_status=model.version_status,
         registration_status=model.registration_status,
+        metadata_reviewed_by=model.metadata_reviewed_by,
+        metadata_reviewed_at=model.metadata_reviewed_at,
+        metadata_rejection_reason=model.metadata_rejection_reason,
         new_version_of=model.new_version_of or "",
         superseded_by=model.superseded_by or "",
         authors=_deserialize_authors(model.authors),
@@ -567,6 +601,10 @@ def resource_from_db(model: ResourceModel) -> Resource:
         entry_points=_deser_entry_points(model.entry_points),
         tests=_deser_tests(model.tests),
         io=_deser_io(model.io),
+        image_review_status=model.image_review_status,
+        image_reviewed_by=model.image_reviewed_by,
+        image_reviewed_at=model.image_reviewed_at,
+        image_rejection_reason=model.image_rejection_reason,
         owner=model.owner,
         metadata=model.metadata_ or {},
         created_at=model.created_at,
@@ -865,6 +903,9 @@ class PostgresRegistry:
         model.version = resource.version
         model.version_status = resource.version_status
         model.registration_status = resource.registration_status
+        model.metadata_reviewed_by = resource.metadata_reviewed_by
+        model.metadata_reviewed_at = resource.metadata_reviewed_at
+        model.metadata_rejection_reason = resource.metadata_rejection_reason
         model.new_version_of = resource.new_version_of or None
         model.superseded_by = resource.superseded_by or None
         model.authors = _serialize_authors(resource.authors)
@@ -907,6 +948,10 @@ class PostgresRegistry:
         model.entry_points = _ser_list(resource.entry_points)
         model.tests = _ser_opt(resource.tests)
         model.io = _ser_opt(resource.io)
+        model.image_review_status = resource.image_review_status
+        model.image_reviewed_by = resource.image_reviewed_by
+        model.image_reviewed_at = resource.image_reviewed_at
+        model.image_rejection_reason = resource.image_rejection_reason
         model.owner = resource.owner
         model.metadata_ = resource.metadata
         model.updated_at = resource.updated_at

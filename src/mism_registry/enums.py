@@ -52,3 +52,12 @@ class RunStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class ImageReviewStatus(str, Enum):
+    """Dockerfile/image vetting workflow for models that ship a container recipe."""
+
+    NOT_APPLICABLE = "not_applicable"  # no container shipped, or metadata not yet approved
+    PENDING_IMAGE_CHECK = "pending_image_check"  # image submitted, awaiting IMAGE_CHECK review
+    IMAGE_APPROVED = "image_approved"  # reviewed & approved; executable
+    IMAGE_REJECTED = "image_rejected"  # reviewer rejected; uploader must resubmit
