@@ -464,9 +464,7 @@ class TestSearchResourcesImageReviewFilter:
         result = pg_registry.search_resources(
             SearchQuery(
                 filters=(
-                    FieldFilter(
-                        field="image_review_status", op="eq", value="pending_image_check"
-                    ),
+                    FieldFilter(field="image_review_status", op="eq", value="pending_image_check"),
                 ),
             )
         )
