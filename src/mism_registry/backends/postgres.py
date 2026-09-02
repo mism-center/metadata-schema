@@ -38,6 +38,7 @@ from sqlalchemy import (
     func,
     literal_column,
     select,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.orm import (
@@ -186,6 +187,12 @@ class ResourceModel(Base):
     external_ids: Mapped[Any] = mapped_column(JSONB, default=dict)
     license: Mapped[str] = mapped_column(String(100), default="")
 
+    # Source provenance (upstream-imported resources)
+    source_repository: Mapped[str] = mapped_column(String(100), default="")
+    source_identifier: Mapped[str] = mapped_column(String(255), default="")
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    source_revision: Mapped[str] = mapped_column(String(100), default="")
+
     # Execution (model/tool only)
     execution_type: Mapped[ExecutionType | None] = mapped_column(
         Enum(ExecutionType, values_callable=_enum_values, name="executiontype", create_type=False),
@@ -250,6 +257,17 @@ class ResourceModel(Base):
         Index("ix_resources_organisms", "organisms", postgresql_using="gin"),
         Index("ix_resources_model_scales", "model_scales", postgresql_using="gin"),
         Index("ix_resources_domains", "domains", postgresql_using="gin"),
+        # One row per upstream revision. The <> '' predicate confines the
+        # constraint to imported rows; uploads leave these columns empty and
+        # would otherwise all collide on ('', '', '').
+        Index(
+            "uq_resources_source",
+            "source_repository",
+            "source_identifier",
+            "source_revision",
+            unique=True,
+            postgresql_where=text("source_repository <> '' AND source_identifier <> ''"),
+        ),
     )
 
 
@@ -308,6 +326,8 @@ _FILTER_COLUMN_MAP: dict[str, Any] = {
     "owner": ResourceModel.owner,
     "organization": ResourceModel.organization,
     "license": ResourceModel.license,
+    "source_repository": ResourceModel.source_repository,
+    "source_identifier": ResourceModel.source_identifier,
     "determinism": ResourceModel.determinism,
     "time_dynamics": ResourceModel.time_dynamics,
     "spatial": ResourceModel.spatial,
@@ -520,6 +540,10 @@ def resource_to_db(resource: Resource) -> ResourceModel:
         size_bytes=resource.size_bytes,
         external_ids=resource.external_ids,
         license=resource.license,
+        source_repository=resource.source_repository,
+        source_identifier=resource.source_identifier,
+        source_url=resource.source_url,
+        source_revision=resource.source_revision,
         execution_type=resource.execution_type,
         execution_ref=resource.execution_ref,
         io_spec=_serialize_io_spec(resource.io_spec),
@@ -588,6 +612,10 @@ def resource_from_db(model: ResourceModel) -> Resource:
         size_bytes=model.size_bytes,
         external_ids=model.external_ids or {},
         license=model.license,
+        source_repository=model.source_repository,
+        source_identifier=model.source_identifier,
+        source_url=model.source_url,
+        source_revision=model.source_revision,
         execution_type=model.execution_type,
         execution_ref=model.execution_ref,
         io_spec=_deserialize_io_spec(model.io_spec),
@@ -728,6 +756,8 @@ class PostgresRegistry:
         version_status: ResourceVersionStatus | None = None,
         date_published_after: date | None = None,
         date_published_before: date | None = None,
+        source_repository: str | None = None,
+        source_identifiers: list[str] | None = None,
     ) -> list[Resource]:
         stmt = select(ResourceModel)
         if resource_type is not None:
@@ -752,6 +782,10 @@ class PostgresRegistry:
             stmt = stmt.where(ResourceModel.date_published >= date_published_after)
         if date_published_before is not None:
             stmt = stmt.where(ResourceModel.date_published <= date_published_before)
+        if source_repository is not None:
+            stmt = stmt.where(ResourceModel.source_repository == source_repository)
+        if source_identifiers is not None:
+            stmt = stmt.where(ResourceModel.source_identifier.in_(source_identifiers))
         results = self._session.execute(stmt).scalars().all()
         return [resource_from_db(m) for m in results]
 
@@ -935,6 +969,10 @@ class PostgresRegistry:
         model.size_bytes = resource.size_bytes
         model.external_ids = resource.external_ids
         model.license = resource.license
+        model.source_repository = resource.source_repository
+        model.source_identifier = resource.source_identifier
+        model.source_url = resource.source_url
+        model.source_revision = resource.source_revision
         model.execution_type = resource.execution_type
         model.execution_ref = resource.execution_ref
         model.io_spec = _serialize_io_spec(resource.io_spec)

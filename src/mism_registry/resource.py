@@ -89,6 +89,14 @@ class Resource:
     external_ids: dict[str, str] = dataclasses.field(default_factory=dict)
     license: str = ""
 
+    # Source provenance — set when a resource is imported from an upstream
+    # repository rather than uploaded. Written once at import; never rewritten
+    # by metadata review.
+    source_repository: str = ""  # e.g. "biomodels"
+    source_identifier: str = ""  # upstream id, e.g. "BIOMD0000000732"
+    source_url: str = ""  # canonical upstream page
+    source_revision: str = ""  # upstream revision, e.g. "6"
+
     # Execution-related (conditional: required for model/tool)
     execution_type: ExecutionType | None = None  # schema.md execution.environment_kind
     execution_ref: str = ""

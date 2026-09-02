@@ -37,6 +37,8 @@ class Registry(Protocol):
         version_status: ResourceVersionStatus | None = None,
         date_published_after: date | None = None,
         date_published_before: date | None = None,
+        source_repository: str | None = None,
+        source_identifiers: list[str] | None = None,
     ) -> list[Resource]: ...
 
     def update_resource(self, resource: Resource) -> Resource: ...

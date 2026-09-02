@@ -63,6 +63,11 @@ class TestResource:
         assert r.io_spec is None
         assert r.external_ids == {}
         assert r.license == ""
+        # Source provenance — empty unless the resource was imported upstream.
+        assert r.source_repository == ""
+        assert r.source_identifier == ""
+        assert r.source_url == ""
+        assert r.source_revision == ""
         assert r.owner == ""
         assert r.metadata == {}
         # Authorship

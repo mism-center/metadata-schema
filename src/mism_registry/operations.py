@@ -110,6 +110,11 @@ def register_model(
     owner: str = "",
     metadata: dict[str, Any] | None = None,
     resource_type: ResourceType = ResourceType.MODEL,
+    # Source provenance (upstream imports)
+    source_repository: str = "",
+    source_identifier: str = "",
+    source_url: str = "",
+    source_revision: str = "",
     # Authorship & attribution
     authors: list[Author] | None = None,
     organization: str = "",
@@ -141,6 +146,10 @@ def register_model(
         size_bytes=size_bytes,
         external_ids=external_ids or {},
         license=license,
+        source_repository=source_repository,
+        source_identifier=source_identifier,
+        source_url=source_url,
+        source_revision=source_revision,
         owner=owner,
         metadata=metadata or {},
         authors=authors or [],
