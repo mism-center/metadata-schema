@@ -289,6 +289,18 @@ class TestPrepareRun:
                 input_resource_ids=[],
             )
 
+    def test_non_executable_model_rejected(self, registry: InMemoryRegistry, sample_model):
+        # A null execution_type declares the model non-executable — e.g. an
+        # upstream import whose run recipe nothing has determined yet.
+        sample_model.execution_type = None
+        registry.update_resource(sample_model)
+        with pytest.raises(ValidationError, match="not executable"):
+            prepare_run(
+                registry,
+                model_id=sample_model.id,
+                input_resource_ids=[],
+            )
+
     def test_unapproved_model_rejected(self, registry: InMemoryRegistry, sample_model):
         # Model still mid-registration (agent building metadata-package) — not runnable.
         sample_model.registration_status = ResourceRegistrationStatus.PENDING_REVIEW

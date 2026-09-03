@@ -28,6 +28,7 @@ from .validation import (
     validate_registration_approved,
     validate_registration_status_transition,
     validate_resource_is_active,
+    validate_resource_is_executable,
     validate_resource_required_fields,
     validate_run_arguments,
     validate_run_status_transition,
@@ -348,6 +349,8 @@ def prepare_run(
             f"Resource '{model_id}' is a {model.resource_type.value}, not a model or tool"
         )
     validate_resource_is_active(model)
+    # Executability gate: a null execution_type declares the model non-executable.
+    validate_resource_is_executable(model)
     # Registration gate: only approved models are executable.
     validate_registration_approved(model)
     # Image-check gate: if a container recipe is shipped, its image must be approved.

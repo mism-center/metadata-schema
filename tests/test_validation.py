@@ -28,6 +28,7 @@ from mism_registry.validation import (
     validate_registration_approved,
     validate_registration_status_transition,
     validate_resource_is_active,
+    validate_resource_is_executable,
     validate_resource_required_fields,
     validate_run_status_transition,
 )
@@ -98,6 +99,22 @@ class TestValidateExecutionFields:
         )
         # Should not warn
         validate_execution_fields(r)
+
+
+class TestValidateResourceIsExecutable:
+    def test_model_with_execution_type_passes(self):
+        r = Resource(
+            name="test",
+            resource_type=ResourceType.MODEL,
+            location_uri="s3://x",
+            execution_type=ExecutionType.DOCKER,
+        )
+        validate_resource_is_executable(r)
+
+    def test_null_execution_type_raises(self):
+        r = Resource(name="test", resource_type=ResourceType.MODEL, location_uri="s3://x")
+        with pytest.raises(ValidationError, match="not executable"):
+            validate_resource_is_executable(r)
 
 
 class TestValidateResourceIsActive:

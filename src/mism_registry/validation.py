@@ -47,6 +47,18 @@ def validate_execution_fields(resource: Resource) -> None:
         )
 
 
+def validate_resource_is_executable(resource: Resource) -> None:
+    """Ensure a resource declares how it runs.
+
+    A null ``execution_type`` marks a resource non-executable — either
+    permanently, or because nothing has determined its run recipe yet.
+    """
+    if resource.execution_type is None:
+        raise ValidationError(
+            f"Resource '{resource.id}' has no execution_type and is not executable."
+        )
+
+
 def validate_resource_is_active(resource: Resource) -> None:
     """Ensure a resource is in ACTIVE version status for operations that require it."""
     if resource.version_status != ResourceVersionStatus.ACTIVE:
