@@ -508,7 +508,7 @@ class TestSourceProvenance:
         pg_registry.register_resource(_make_model(name="Plain", location_uri="docker://plain"))
         assert pg_registry.find_resources(source_repository="biomodels") == []
 
-    def test_same_identifier_and_revision_violates_unique_index(self, pg_registry, pg_session):
+    def test_same_identifier_violates_unique_index(self, pg_registry, pg_session):
         pg_registry.register_resource(_make_imported("First", "BIOMD0000000732", revision="6"))
         # Savepoint: the failed insert aborts its own transaction, and without
         # one the session is unusable for the fixture's closing rollback.
@@ -517,11 +517,18 @@ class TestSourceProvenance:
                 _make_imported("Second", "BIOMD0000000732", revision="6")
             )
 
-    def test_same_identifier_different_revision_is_allowed(self, pg_registry):
+    def test_differing_revision_does_not_escape_the_unique_index(self, pg_registry, pg_session):
         pg_registry.register_resource(_make_imported("Rev 6", "BIOMD0000000732", revision="6"))
-        pg_registry.register_resource(_make_imported("Rev 7", "BIOMD0000000732", revision="7"))
+        with pytest.raises(IntegrityError), pg_session.begin_nested():
+            pg_registry.register_resource(_make_imported("Rev 7", "BIOMD0000000732", revision="7"))
+
+    def test_same_identifier_in_another_repository_is_allowed(self, pg_registry):
+        pg_registry.register_resource(_make_imported("BioModels copy", "BIOMD0000000732"))
+        pg_registry.register_resource(
+            _make_imported("PMR copy", "BIOMD0000000732", source_repository="pmr")
+        )
         results = pg_registry.find_resources(source_identifiers=["BIOMD0000000732"])
-        assert {r.source_revision for r in results} == {"6", "7"}
+        assert {r.source_repository for r in results} == {"biomodels", "pmr"}
 
     def test_multiple_uploads_do_not_collide(self, pg_registry):
         """The <> '' predicate must keep empty-provenance rows out of the index."""

@@ -257,14 +257,15 @@ class ResourceModel(Base):
         Index("ix_resources_organisms", "organisms", postgresql_using="gin"),
         Index("ix_resources_model_scales", "model_scales", postgresql_using="gin"),
         Index("ix_resources_domains", "domains", postgresql_using="gin"),
-        # One row per upstream revision. The <> '' predicate confines the
-        # constraint to imported rows; uploads leave these columns empty and
-        # would otherwise all collide on ('', '', '').
+        # One row per upstream model. source_revision is deliberately absent:
+        # re-importing a model at a newer revision must reconcile with the
+        # existing row rather than land beside it as an unlinked duplicate.
+        # The <> '' predicate confines the constraint to imported rows; uploads
+        # leave these columns empty and would otherwise all collide on ('', '').
         Index(
             "uq_resources_source",
             "source_repository",
             "source_identifier",
-            "source_revision",
             unique=True,
             postgresql_where=text("source_repository <> '' AND source_identifier <> ''"),
         ),
