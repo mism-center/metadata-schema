@@ -95,7 +95,7 @@ def register_model(
     *,
     name: str,
     location_uri: str,
-    execution_type: ExecutionType,
+    execution_type: ExecutionType | None,
     description: str = "",
     version: str = "",
     format_tags: list[str] | None = None,

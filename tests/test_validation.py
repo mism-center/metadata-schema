@@ -67,14 +67,15 @@ class TestValidateExecutionFields:
         r = Resource(name="test", resource_type=ResourceType.DATASET, location_uri="s3://x")
         validate_execution_fields(r)  # Should not raise
 
-    def test_model_without_execution_type_raises(self):
+    def test_model_without_execution_type_is_allowed(self):
+        """Null execution_type marks a resource non-executable, or not yet determined."""
         r = Resource(name="test", resource_type=ResourceType.MODEL, location_uri="s3://x")
-        with pytest.raises(ValidationError, match="execution_type"):
+        with pytest.warns(UserWarning, match="no io_spec"):
             validate_execution_fields(r)
 
-    def test_tool_without_execution_type_raises(self):
+    def test_tool_without_execution_type_is_allowed(self):
         r = Resource(name="test", resource_type=ResourceType.TOOL, location_uri="s3://x")
-        with pytest.raises(ValidationError, match="execution_type"):
+        with pytest.warns(UserWarning, match="no io_spec"):
             validate_execution_fields(r)
 
     def test_model_without_iospec_warns(self):

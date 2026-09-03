@@ -29,19 +29,22 @@ def validate_resource_required_fields(resource: Resource) -> None:
 
 
 def validate_execution_fields(resource: Resource) -> None:
-    """For model/tool: execution_type must be set. Warn if io_spec is absent."""
-    if resource.resource_type in (ResourceType.MODEL, ResourceType.TOOL):
-        if resource.execution_type is None:
-            raise ValidationError(
-                f"execution_type is required for resource_type={resource.resource_type.value}"
-            )
-        if resource.io_spec is None:
-            warnings.warn(
-                f"Resource '{resource.name}' is a {resource.resource_type.value} "
-                f"but has no io_spec. Consider defining inputs/outputs.",
-                UserWarning,
-                stacklevel=3,
-            )
+    """For model/tool: warn if io_spec is absent.
+
+    A null ``execution_type`` is how a non-executable resource is expressed —
+    including one whose execution recipe has not been determined yet — so it is
+    not a validation failure here. Callers that require a resource to be
+    runnable must check for it themselves.
+    """
+    if resource.resource_type in (ResourceType.MODEL, ResourceType.TOOL) and (
+        resource.io_spec is None
+    ):
+        warnings.warn(
+            f"Resource '{resource.name}' is a {resource.resource_type.value} "
+            f"but has no io_spec. Consider defining inputs/outputs.",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 def validate_resource_is_active(resource: Resource) -> None:
