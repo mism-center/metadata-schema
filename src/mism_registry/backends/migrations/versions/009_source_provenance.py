@@ -22,15 +22,20 @@ def upgrade() -> None:
     op.add_column("resources", sa.Column("source_url", sa.Text(), server_default=""))
     op.add_column("resources", sa.Column("source_revision", sa.String(100), server_default=""))
 
-    # One row per upstream model. The <> '' predicate confines the constraint
-    # to imported rows; existing rows backfill to '' and would otherwise all
-    # collide on ('', '').
+    # One catalogued copy per upstream model. Unapproved rows are excluded so an
+    # in-flight import by one user does not bar another from importing the same
+    # model; the collision surfaces when the second one is approved.
+    # The <> '' predicate confines the constraint to imported rows; existing rows
+    # backfill to '' and would otherwise all collide on ('', '').
     op.create_index(
         "uq_resources_source",
         "resources",
         ["source_repository", "source_identifier"],
         unique=True,
-        postgresql_where=sa.text("source_repository <> '' AND source_identifier <> ''"),
+        postgresql_where=sa.text(
+            "source_repository <> '' AND source_identifier <> '' "
+            "AND registration_status = 'approved'"
+        ),
     )
 
 

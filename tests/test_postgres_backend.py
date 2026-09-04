@@ -27,6 +27,7 @@ from mism_registry import (
     IOSpec,
     Publication,
     Resource,
+    ResourceRegistrationStatus,
     ResourceType,
     ResourceVersionStatus,
     Run,
@@ -508,19 +509,74 @@ class TestSourceProvenance:
         pg_registry.register_resource(_make_model(name="Plain", location_uri="docker://plain"))
         assert pg_registry.find_resources(source_repository="biomodels") == []
 
-    def test_same_identifier_violates_unique_index(self, pg_registry, pg_session):
-        pg_registry.register_resource(_make_imported("First", "BIOMD0000000732", revision="6"))
+    def test_two_unapproved_imports_of_one_model_coexist(self, pg_registry):
+        """An in-flight import is per-user working state, not a claim on the model.
+
+        Constraining it would let one user lock an upstream model out of the
+        registry for everyone else by importing it and never approving it.
+        """
+        pg_registry.register_resource(_make_imported("Mine", "BIOMD0000000732", revision="6"))
+        pg_registry.register_resource(_make_imported("Theirs", "BIOMD0000000732", revision="6"))
+
+        results = pg_registry.find_resources(source_identifiers=["BIOMD0000000732"])
+        assert {r.name for r in results} == {"Mine", "Theirs"}
+
+    def test_same_identifier_violates_unique_index_once_approved(self, pg_registry, pg_session):
+        pg_registry.register_resource(
+            _make_imported(
+                "First",
+                "BIOMD0000000732",
+                revision="6",
+                registration_status=ResourceRegistrationStatus.APPROVED,
+            )
+        )
         # Savepoint: the failed insert aborts its own transaction, and without
         # one the session is unusable for the fixture's closing rollback.
         with pytest.raises(IntegrityError), pg_session.begin_nested():
             pg_registry.register_resource(
-                _make_imported("Second", "BIOMD0000000732", revision="6")
+                _make_imported(
+                    "Second",
+                    "BIOMD0000000732",
+                    revision="6",
+                    registration_status=ResourceRegistrationStatus.APPROVED,
+                )
             )
 
-    def test_differing_revision_does_not_escape_the_unique_index(self, pg_registry, pg_session):
-        pg_registry.register_resource(_make_imported("Rev 6", "BIOMD0000000732", revision="6"))
+    def test_approving_a_second_copy_violates_the_unique_index(self, pg_registry, pg_session):
+        """The collision the approved-only predicate defers to approve time."""
+        pg_registry.register_resource(
+            _make_imported(
+                "Winner",
+                "BIOMD0000000732",
+                revision="6",
+                registration_status=ResourceRegistrationStatus.APPROVED,
+            )
+        )
+        loser = _make_imported("Loser", "BIOMD0000000732", revision="6")
+        pg_registry.register_resource(loser)
+
+        loser.registration_status = ResourceRegistrationStatus.APPROVED
         with pytest.raises(IntegrityError), pg_session.begin_nested():
-            pg_registry.register_resource(_make_imported("Rev 7", "BIOMD0000000732", revision="7"))
+            pg_registry.update_resource(loser)
+
+    def test_differing_revision_does_not_escape_the_unique_index(self, pg_registry, pg_session):
+        pg_registry.register_resource(
+            _make_imported(
+                "Rev 6",
+                "BIOMD0000000732",
+                revision="6",
+                registration_status=ResourceRegistrationStatus.APPROVED,
+            )
+        )
+        with pytest.raises(IntegrityError), pg_session.begin_nested():
+            pg_registry.register_resource(
+                _make_imported(
+                    "Rev 7",
+                    "BIOMD0000000732",
+                    revision="7",
+                    registration_status=ResourceRegistrationStatus.APPROVED,
+                )
+            )
 
     def test_same_identifier_in_another_repository_is_allowed(self, pg_registry):
         pg_registry.register_resource(_make_imported("BioModels copy", "BIOMD0000000732"))

@@ -257,9 +257,13 @@ class ResourceModel(Base):
         Index("ix_resources_organisms", "organisms", postgresql_using="gin"),
         Index("ix_resources_model_scales", "model_scales", postgresql_using="gin"),
         Index("ix_resources_domains", "domains", postgresql_using="gin"),
-        # One row per upstream model. source_revision is deliberately absent:
-        # re-importing a model at a newer revision must reconcile with the
-        # existing row rather than land beside it as an unlinked duplicate.
+        # One catalogued copy per upstream model. Unapproved rows are excluded:
+        # they are per-user working state, so one user's abandoned draft must not
+        # bar everyone else from importing that model. A collision between two
+        # in-flight imports therefore surfaces when the second one is approved.
+        # source_revision is deliberately absent: re-importing a model at a newer
+        # revision must reconcile with the existing row rather than land beside
+        # it as an unlinked duplicate.
         # The <> '' predicate confines the constraint to imported rows; uploads
         # leave these columns empty and would otherwise all collide on ('', '').
         Index(
@@ -267,7 +271,10 @@ class ResourceModel(Base):
             "source_repository",
             "source_identifier",
             unique=True,
-            postgresql_where=text("source_repository <> '' AND source_identifier <> ''"),
+            postgresql_where=text(
+                "source_repository <> '' AND source_identifier <> '' "
+                "AND registration_status = 'approved'"
+            ),
         ),
     )
 
