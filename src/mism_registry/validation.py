@@ -49,14 +49,21 @@ def validate_execution_fields(resource: Resource) -> None:
 
 
 def validate_resource_is_executable(resource: Resource) -> None:
-    """Ensure a resource declares how it runs.
+    """Ensure a resource declares how it runs and its environment is built.
 
     A null ``execution_type`` marks a resource non-executable — either
     permanently, or because nothing has determined its run recipe yet.
+    Otherwise the build agent must have marked the environment RUNNABLE.
     """
     if resource.execution_type is None:
         raise ValidationError(
             f"Resource '{resource.id}' has no execution_type and is not executable."
+        )
+    if resource.env_build_status != EnvBuildStatus.RUNNABLE:
+        raise ValidationError(
+            f"Resource '{resource.id}' has env_build_status "
+            f"'{resource.env_build_status.value}', expected 'runnable'. "
+            f"Wait for the environment build to finish before running."
         )
 
 

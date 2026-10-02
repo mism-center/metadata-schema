@@ -11,12 +11,14 @@ The execution layer then renders a safe command via EntryPoint.to_cli().
 import pytest
 
 from mism_registry import (
+    EnvBuildStatus,
     ExecutionType,
     ImageReviewStatus,
     InMemoryRegistry,
     ResourceRegistrationStatus,
     prepare_run,
     register_model,
+    set_env_build_status,
     set_image_review_status,
     set_registration_status,
 )
@@ -32,6 +34,9 @@ def _approve(registry, resource):
         ResourceRegistrationStatus.APPROVED,
     ):
         resource = set_registration_status(registry, resource_id=resource.id, target=status)
+    # Env build agent finishes: READY_FOR_BUILD -> BUILDING -> RUNNABLE.
+    for env_target in (EnvBuildStatus.BUILDING, EnvBuildStatus.RUNNABLE):
+        resource = set_env_build_status(registry, resource_id=resource.id, target=env_target)
     return resource
 
 
