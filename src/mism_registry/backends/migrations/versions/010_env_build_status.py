@@ -1,7 +1,7 @@
 """Add agent environment-build status (env_build_status, env_build_error).
 
-Revision ID: 009
-Revises: 008
+Revision ID: 010
+Revises: 009
 Create Date: 2026-10-02
 """
 
@@ -10,8 +10,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "009"
-down_revision: str = "008"
+revision: str = "010"
+down_revision: str = "009"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
