@@ -28,6 +28,7 @@ from mism_registry.validation import (
     validate_registration_approved,
     validate_registration_status_transition,
     validate_resource_is_active,
+    validate_resource_is_executable,
     validate_resource_required_fields,
     validate_run_status_transition,
 )
@@ -67,14 +68,15 @@ class TestValidateExecutionFields:
         r = Resource(name="test", resource_type=ResourceType.DATASET, location_uri="s3://x")
         validate_execution_fields(r)  # Should not raise
 
-    def test_model_without_execution_type_raises(self):
+    def test_model_without_execution_type_is_allowed(self):
+        """Null execution_type marks a resource non-executable, or not yet determined."""
         r = Resource(name="test", resource_type=ResourceType.MODEL, location_uri="s3://x")
-        with pytest.raises(ValidationError, match="execution_type"):
+        with pytest.warns(UserWarning, match="no io_spec"):
             validate_execution_fields(r)
 
-    def test_tool_without_execution_type_raises(self):
+    def test_tool_without_execution_type_is_allowed(self):
         r = Resource(name="test", resource_type=ResourceType.TOOL, location_uri="s3://x")
-        with pytest.raises(ValidationError, match="execution_type"):
+        with pytest.warns(UserWarning, match="no io_spec"):
             validate_execution_fields(r)
 
     def test_model_without_iospec_warns(self):
@@ -97,6 +99,22 @@ class TestValidateExecutionFields:
         )
         # Should not warn
         validate_execution_fields(r)
+
+
+class TestValidateResourceIsExecutable:
+    def test_model_with_execution_type_passes(self):
+        r = Resource(
+            name="test",
+            resource_type=ResourceType.MODEL,
+            location_uri="s3://x",
+            execution_type=ExecutionType.DOCKER,
+        )
+        validate_resource_is_executable(r)
+
+    def test_null_execution_type_raises(self):
+        r = Resource(name="test", resource_type=ResourceType.MODEL, location_uri="s3://x")
+        with pytest.raises(ValidationError, match="not executable"):
+            validate_resource_is_executable(r)
 
 
 class TestValidateResourceIsActive:

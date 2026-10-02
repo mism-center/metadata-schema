@@ -30,6 +30,7 @@ from .validation import (
     validate_registration_approved,
     validate_registration_status_transition,
     validate_resource_is_active,
+    validate_resource_is_executable,
     validate_resource_required_fields,
     validate_run_arguments,
     validate_run_status_transition,
@@ -97,7 +98,7 @@ def register_model(
     *,
     name: str,
     location_uri: str,
-    execution_type: ExecutionType,
+    execution_type: ExecutionType | None,
     description: str = "",
     version: str = "",
     format_tags: list[str] | None = None,
@@ -112,6 +113,11 @@ def register_model(
     owner: str = "",
     metadata: dict[str, Any] | None = None,
     resource_type: ResourceType = ResourceType.MODEL,
+    # Source provenance (upstream imports)
+    source_repository: str = "",
+    source_identifier: str = "",
+    source_url: str = "",
+    source_revision: str = "",
     # Authorship & attribution
     authors: list[Author] | None = None,
     organization: str = "",
@@ -143,6 +149,10 @@ def register_model(
         size_bytes=size_bytes,
         external_ids=external_ids or {},
         license=license,
+        source_repository=source_repository,
+        source_identifier=source_identifier,
+        source_url=source_url,
+        source_revision=source_revision,
         owner=owner,
         metadata=metadata or {},
         authors=authors or [],
@@ -369,6 +379,8 @@ def prepare_run(
             f"Resource '{model_id}' is a {model.resource_type.value}, not a model or tool"
         )
     validate_resource_is_active(model)
+    # Executability gate: a null execution_type declares the model non-executable.
+    validate_resource_is_executable(model)
     # Registration gate: only approved models are executable.
     validate_registration_approved(model)
     # Image-check gate: if a container recipe is shipped, its image must be approved.

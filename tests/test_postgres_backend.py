@@ -16,6 +16,7 @@ from datetime import date, datetime, timezone
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from mism_registry import (
@@ -27,6 +28,7 @@ from mism_registry import (
     IOSpec,
     Publication,
     Resource,
+    ResourceRegistrationStatus,
     ResourceType,
     ResourceVersionStatus,
     Run,
@@ -440,6 +442,156 @@ class TestFindResources:
         assert "D-combo-match" in names
         assert "D-combo-wrong-tag" not in names
         assert "D-combo-wrong-owner" not in names
+
+
+# ── Test: Source provenance ──────────────────────────────────────────
+
+
+def _make_imported(name: str, identifier: str, revision: str = "1", **kwargs) -> Resource:
+    return _make_model(
+        name=name,
+        location_uri=f"irods:///{identifier}",
+        source_repository=kwargs.pop("source_repository", "biomodels"),
+        source_identifier=identifier,
+        source_url=f"https://www.ebi.ac.uk/biomodels/{identifier}",
+        source_revision=revision,
+        **kwargs,
+    )
+
+
+class TestSourceProvenance:
+    def test_round_trips_all_four_fields(self, pg_registry):
+        pg_registry.register_resource(_make_imported("Imported", "BIOMD0000000732", revision="6"))
+        (found,) = pg_registry.find_resources(source_identifiers=["BIOMD0000000732"])
+        assert found.source_repository == "biomodels"
+        assert found.source_identifier == "BIOMD0000000732"
+        assert found.source_url == "https://www.ebi.ac.uk/biomodels/BIOMD0000000732"
+        assert found.source_revision == "6"
+
+    def test_uploaded_resources_have_empty_provenance(self, pg_registry):
+        pg_registry.register_resource(_make_model(name="Uploaded", location_uri="docker://up"))
+        (found,) = pg_registry.find_resources(name_contains="Uploaded")
+        assert found.source_repository == ""
+        assert found.source_identifier == ""
+        assert found.source_url == ""
+        assert found.source_revision == ""
+
+    def test_find_by_batch_of_identifiers(self, pg_registry):
+        for ident in ("BIOMD0000000001", "BIOMD0000000002", "BIOMD0000000003"):
+            pg_registry.register_resource(_make_imported(f"M-{ident}", ident))
+
+        results = pg_registry.find_resources(
+            source_repository="biomodels",
+            source_identifiers=["BIOMD0000000001", "BIOMD0000000003"],
+        )
+        assert {r.source_identifier for r in results} == {
+            "BIOMD0000000001",
+            "BIOMD0000000003",
+        }
+
+    def test_find_ignores_other_repositories(self, pg_registry):
+        pg_registry.register_resource(
+            _make_imported("From elsewhere", "BIOMD0000000009", source_repository="pmr")
+        )
+        assert (
+            pg_registry.find_resources(
+                source_repository="biomodels",
+                source_identifiers=["BIOMD0000000009"],
+            )
+            == []
+        )
+
+    def test_empty_identifier_list_matches_nothing(self, pg_registry):
+        pg_registry.register_resource(_make_imported("Any", "BIOMD0000000010"))
+        assert pg_registry.find_resources(source_identifiers=[]) == []
+
+    def test_find_excludes_uploaded_resources(self, pg_registry):
+        """Uploads all share ('', '') — the repository filter must not match them."""
+        pg_registry.register_resource(_make_model(name="Plain", location_uri="docker://plain"))
+        assert pg_registry.find_resources(source_repository="biomodels") == []
+
+    def test_two_unapproved_imports_of_one_model_coexist(self, pg_registry):
+        """An in-flight import is per-user working state, not a claim on the model.
+
+        Constraining it would let one user lock an upstream model out of the
+        registry for everyone else by importing it and never approving it.
+        """
+        pg_registry.register_resource(_make_imported("Mine", "BIOMD0000000732", revision="6"))
+        pg_registry.register_resource(_make_imported("Theirs", "BIOMD0000000732", revision="6"))
+
+        results = pg_registry.find_resources(source_identifiers=["BIOMD0000000732"])
+        assert {r.name for r in results} == {"Mine", "Theirs"}
+
+    def test_same_identifier_violates_unique_index_once_approved(self, pg_registry, pg_session):
+        pg_registry.register_resource(
+            _make_imported(
+                "First",
+                "BIOMD0000000732",
+                revision="6",
+                registration_status=ResourceRegistrationStatus.APPROVED,
+            )
+        )
+        # Savepoint: the failed insert aborts its own transaction, and without
+        # one the session is unusable for the fixture's closing rollback.
+        with pytest.raises(IntegrityError), pg_session.begin_nested():
+            pg_registry.register_resource(
+                _make_imported(
+                    "Second",
+                    "BIOMD0000000732",
+                    revision="6",
+                    registration_status=ResourceRegistrationStatus.APPROVED,
+                )
+            )
+
+    def test_approving_a_second_copy_violates_the_unique_index(self, pg_registry, pg_session):
+        """The collision the approved-only predicate defers to approve time."""
+        pg_registry.register_resource(
+            _make_imported(
+                "Winner",
+                "BIOMD0000000732",
+                revision="6",
+                registration_status=ResourceRegistrationStatus.APPROVED,
+            )
+        )
+        loser = _make_imported("Loser", "BIOMD0000000732", revision="6")
+        pg_registry.register_resource(loser)
+
+        loser.registration_status = ResourceRegistrationStatus.APPROVED
+        with pytest.raises(IntegrityError), pg_session.begin_nested():
+            pg_registry.update_resource(loser)
+
+    def test_differing_revision_does_not_escape_the_unique_index(self, pg_registry, pg_session):
+        pg_registry.register_resource(
+            _make_imported(
+                "Rev 6",
+                "BIOMD0000000732",
+                revision="6",
+                registration_status=ResourceRegistrationStatus.APPROVED,
+            )
+        )
+        with pytest.raises(IntegrityError), pg_session.begin_nested():
+            pg_registry.register_resource(
+                _make_imported(
+                    "Rev 7",
+                    "BIOMD0000000732",
+                    revision="7",
+                    registration_status=ResourceRegistrationStatus.APPROVED,
+                )
+            )
+
+    def test_same_identifier_in_another_repository_is_allowed(self, pg_registry):
+        pg_registry.register_resource(_make_imported("BioModels copy", "BIOMD0000000732"))
+        pg_registry.register_resource(
+            _make_imported("PMR copy", "BIOMD0000000732", source_repository="pmr")
+        )
+        results = pg_registry.find_resources(source_identifiers=["BIOMD0000000732"])
+        assert {r.source_repository for r in results} == {"biomodels", "pmr"}
+
+    def test_multiple_uploads_do_not_collide(self, pg_registry):
+        """The <> '' predicate must keep empty-provenance rows out of the index."""
+        pg_registry.register_resource(_make_model(name="U1", location_uri="docker://u1"))
+        pg_registry.register_resource(_make_model(name="U2", location_uri="docker://u2"))
+        assert len(pg_registry.find_resources(name_contains="U")) >= 2
 
 
 # ── Test: Search Resources (structured filters) ──────────────────────
