@@ -7,6 +7,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from .enums import (
+    EnvBuildStatus,
     ExecutionType,
     ImageReviewStatus,
     ResourceRegistrationStatus,
@@ -22,6 +23,7 @@ from .run_detail import ModelRunSummary
 from .types import Author, Container, EntryPoint, IOSpec, Publication, RunEnvironment
 from .validation import (
     check_iospec_handshake,
+    validate_env_build_status_transition,
     validate_execution_fields,
     validate_image_approved_if_shipped,
     validate_image_review_status_transition,
@@ -255,6 +257,12 @@ def set_registration_status(
         resource.metadata_reviewed_by = reviewed_by
         resource.metadata_reviewed_at = datetime.now(timezone.utc)
     resource.metadata_rejection_reason = reason
+    # Approval queues the model for the env-build agent.
+    if (
+        target == ResourceRegistrationStatus.APPROVED
+        and resource.env_build_status == EnvBuildStatus.NOT_READY
+    ):
+        resource.env_build_status = EnvBuildStatus.READY_FOR_BUILD
     resource.updated_at = datetime.now(timezone.utc)
     return registry.update_resource(resource)
 
@@ -303,6 +311,28 @@ def set_image_review_status(
     resource.image_reviewed_by = reviewed_by
     resource.image_rejection_reason = reason
     resource.image_reviewed_at = datetime.now(timezone.utc)
+    resource.updated_at = datetime.now(timezone.utc)
+    return registry.update_resource(resource)
+
+
+def set_env_build_status(
+    registry: Registry,
+    *,
+    resource_id: str,
+    target: EnvBuildStatus,
+    error: str = "",
+) -> Resource:
+    """Advance a resource through the agent environment-build workflow.
+
+    Validates the transition, then persists. ``error`` is stored for
+    BUILD_FAILED and cleared otherwise.
+    """
+    # ponytail: no atomic claim; two agents can both take READY_FOR_BUILD -> BUILDING.
+    # Add SELECT ... FOR UPDATE SKIP LOCKED in the backend if >1 agent runs.
+    resource = registry.get_resource(resource_id)
+    validate_env_build_status_transition(resource.env_build_status, target)
+    resource.env_build_status = target
+    resource.env_build_error = error if target == EnvBuildStatus.BUILD_FAILED else ""
     resource.updated_at = datetime.now(timezone.utc)
     return registry.update_resource(resource)
 

@@ -8,6 +8,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from .enums import (
+    EnvBuildStatus,
     ExecutionType,
     ImageReviewStatus,
     ResourceRegistrationStatus,
@@ -110,6 +111,10 @@ class Resource:
     image_reviewed_by: str = ""
     image_reviewed_at: datetime | None = None
     image_rejection_reason: str = ""
+
+    # Agent-driven environment build state (set READY_FOR_BUILD when registration is approved)
+    env_build_status: EnvBuildStatus = EnvBuildStatus.NOT_READY
+    env_build_error: str = ""
 
     # Rich I/O characterization (schema.md Section C)
     io: IODetail | None = None

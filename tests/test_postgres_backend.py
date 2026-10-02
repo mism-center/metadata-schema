@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from mism_registry import (
     Author,
+    EnvBuildStatus,
     ExecutionType,
     ImageReviewStatus,
     IOSlot,
@@ -521,6 +522,20 @@ class TestUpdateResource:
         r.id = "nonexistent-id"
         with pytest.raises(ResourceNotFoundError):
             pg_registry.update_resource(r)
+
+    def test_env_build_fields_round_trip_and_filter(self, pg_registry):
+        """env_build_* survive register/update, and the status is filterable."""
+        r = _make_model()
+        pg_registry.register_resource(r)
+        assert pg_registry.get_resource(r.id).env_build_status == EnvBuildStatus.NOT_READY
+
+        r.env_build_status = EnvBuildStatus.BUILD_FAILED
+        r.env_build_error = "pip boom"
+        pg_registry.update_resource(r)
+
+        got = pg_registry.get_resource(r.id)
+        assert got.env_build_status == EnvBuildStatus.BUILD_FAILED
+        assert got.env_build_error == "pip boom"
 
     def test_image_review_fields_round_trip_through_update(self, pg_registry):
         """update_resource() has its own manual field-by-field mapping (distinct

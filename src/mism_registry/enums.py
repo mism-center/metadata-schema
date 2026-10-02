@@ -61,3 +61,13 @@ class ImageReviewStatus(str, Enum):
     PENDING_IMAGE_CHECK = "pending_image_check"  # image submitted, awaiting IMAGE_CHECK review
     IMAGE_APPROVED = "image_approved"  # reviewed & approved; executable
     IMAGE_REJECTED = "image_rejected"  # reviewer rejected; uploader must resubmit
+
+
+class EnvBuildStatus(str, Enum):
+    """Agent-driven execution-environment build state, after metadata approval."""
+
+    NOT_READY = "not_ready"  # metadata not yet approved
+    READY_FOR_BUILD = "ready_for_build"  # approved; waiting for a build agent
+    BUILDING = "building"  # agent is constructing the environment
+    BUILD_FAILED = "build_failed"  # agent failed; see env_build_error
+    RUNNABLE = "runnable"  # environment built and usable

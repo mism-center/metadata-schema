@@ -49,6 +49,7 @@ from sqlalchemy.orm import (
 )
 
 from mism_registry.enums import (
+    EnvBuildStatus,
     ExecutionType,
     ImageReviewStatus,
     ResourceRegistrationStatus,
@@ -221,6 +222,18 @@ class ResourceModel(Base):
     )
     image_rejection_reason: Mapped[str] = mapped_column(Text, default="")
 
+    # Agent environment-build workflow
+    env_build_status: Mapped[EnvBuildStatus] = mapped_column(
+        Enum(
+            EnvBuildStatus,
+            values_callable=_enum_values,
+            name="envbuildstatus",
+            create_type=False,
+        ),
+        default=EnvBuildStatus.NOT_READY,
+    )
+    env_build_error: Mapped[str] = mapped_column(Text, default="")
+
     # Rich I/O characterization (schema.md Section C)
     io: Mapped[Any] = mapped_column(JSONB, nullable=True)
 
@@ -246,6 +259,7 @@ class ResourceModel(Base):
         Index("ix_resources_registration_status", "registration_status"),
         Index("ix_resources_owner", "owner"),
         Index("ix_resources_image_review_status", "image_review_status"),
+        Index("ix_resources_env_build_status", "env_build_status"),
         Index("ix_resources_format_tags", "format_tags", postgresql_using="gin"),
         Index("ix_resources_organisms", "organisms", postgresql_using="gin"),
         Index("ix_resources_model_scales", "model_scales", postgresql_using="gin"),
@@ -304,6 +318,7 @@ _FILTER_COLUMN_MAP: dict[str, Any] = {
     "version_status": ResourceModel.version_status,
     "registration_status": ResourceModel.registration_status,
     "image_review_status": ResourceModel.image_review_status,
+    "env_build_status": ResourceModel.env_build_status,
     "execution_type": ResourceModel.execution_type,
     "owner": ResourceModel.owner,
     "organization": ResourceModel.organization,
@@ -537,6 +552,8 @@ def resource_to_db(resource: Resource) -> ResourceModel:
         image_reviewed_by=resource.image_reviewed_by,
         image_reviewed_at=resource.image_reviewed_at,
         image_rejection_reason=resource.image_rejection_reason,
+        env_build_status=resource.env_build_status,
+        env_build_error=resource.env_build_error,
         owner=resource.owner,
         metadata_=resource.metadata,
         created_at=resource.created_at,
@@ -605,6 +622,8 @@ def resource_from_db(model: ResourceModel) -> Resource:
         image_reviewed_by=model.image_reviewed_by,
         image_reviewed_at=model.image_reviewed_at,
         image_rejection_reason=model.image_rejection_reason,
+        env_build_status=model.env_build_status,
+        env_build_error=model.env_build_error,
         owner=model.owner,
         metadata=model.metadata_ or {},
         created_at=model.created_at,
@@ -952,6 +971,8 @@ class PostgresRegistry:
         model.image_reviewed_by = resource.image_reviewed_by
         model.image_reviewed_at = resource.image_reviewed_at
         model.image_rejection_reason = resource.image_rejection_reason
+        model.env_build_status = resource.env_build_status
+        model.env_build_error = resource.env_build_error
         model.owner = resource.owner
         model.metadata_ = resource.metadata
         model.updated_at = resource.updated_at

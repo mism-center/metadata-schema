@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 
 from .enums import (
+    EnvBuildStatus,
     ImageReviewStatus,
     ResourceRegistrationStatus,
     ResourceType,
@@ -188,4 +189,26 @@ def validate_image_review_status_transition(
     if target not in _VALID_IMAGE_REVIEW_TRANSITIONS.get(current, set()):
         raise InvalidStateTransitionError(
             f"Cannot transition image_review_status from {current.value} to {target.value}"
+        )
+
+
+# Legal state transitions for the agent environment-build workflow.
+_E = EnvBuildStatus
+_VALID_ENV_BUILD_TRANSITIONS: dict[EnvBuildStatus, set[EnvBuildStatus]] = {
+    _E.NOT_READY: {_E.READY_FOR_BUILD},
+    _E.READY_FOR_BUILD: {_E.BUILDING},
+    _E.BUILDING: {_E.RUNNABLE, _E.BUILD_FAILED},
+    _E.BUILD_FAILED: {_E.READY_FOR_BUILD},  # retry
+    _E.RUNNABLE: {_E.READY_FOR_BUILD},  # rebuild after the model changes
+}
+
+
+def validate_env_build_status_transition(
+    current: EnvBuildStatus,
+    target: EnvBuildStatus,
+) -> None:
+    """Raise InvalidStateTransitionError if the env-build transition is illegal."""
+    if target not in _VALID_ENV_BUILD_TRANSITIONS.get(current, set()):
+        raise InvalidStateTransitionError(
+            f"Cannot transition env_build_status from {current.value} to {target.value}"
         )
