@@ -61,6 +61,8 @@ FILTERABLE_FIELDS: dict[str, tuple[str, frozenset[str]]] = {
     "owner": ("scalar", frozenset({"eq", "in"})),
     "organization": ("scalar", frozenset({"eq", "in"})),
     "license": ("scalar", frozenset({"eq", "in"})),
+    "source_repository": ("scalar", frozenset({"eq", "in"})),
+    "source_identifier": ("scalar", frozenset({"eq", "in"})),
     # Characterization vocabularies (schema.md Section A). `multiscale` is a
     # nullable bool, so `in` would be meaningless — `eq` only.
     "determinism": ("scalar", frozenset({"eq", "in"})),
@@ -96,6 +98,8 @@ AGGREGATABLE_FIELDS: frozenset[str] = frozenset(
         "owner",
         "organization",
         "license",
+        "source_repository",
+        "source_identifier",
         "determinism",
         "time_dynamics",
         "spatial",

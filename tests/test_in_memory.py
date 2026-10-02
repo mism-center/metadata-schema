@@ -104,6 +104,34 @@ class TestFindResources:
         assert len(results) == 1
         assert results[0].name == "d1"
 
+    def test_find_by_source_identifiers(self, registry: InMemoryRegistry):
+        self._register(
+            registry,
+            name="imported",
+            source_repository="biomodels",
+            source_identifier="BIOMD0000000732",
+        )
+        self._register(registry, name="uploaded", location_uri="s3://y")
+        results = registry.find_resources(
+            source_repository="biomodels",
+            source_identifiers=["BIOMD0000000732"],
+        )
+        assert len(results) == 1
+        assert results[0].name == "imported"
+
+    def test_find_by_source_is_case_sensitive(self, registry: InMemoryRegistry):
+        """Matches the Postgres backend's `==` / `IN`, unlike the vocabulary filters."""
+        self._register(registry, name="imported", source_identifier="BIOMD0000000732")
+        assert registry.find_resources(source_identifiers=["biomd0000000732"]) == []
+
+    def test_find_by_source_repository_excludes_uploads(self, registry: InMemoryRegistry):
+        self._register(registry, name="uploaded")
+        assert registry.find_resources(source_repository="biomodels") == []
+
+    def test_find_by_empty_source_identifiers(self, registry: InMemoryRegistry):
+        self._register(registry, name="imported", source_identifier="BIOMD0000000732")
+        assert registry.find_resources(source_identifiers=[]) == []
+
     def test_find_by_name_contains(self, registry: InMemoryRegistry):
         self._register(registry, name="SARS-CoV-2 Spike Data")
         self._register(registry, name="Influenza Data", location_uri="s3://y")

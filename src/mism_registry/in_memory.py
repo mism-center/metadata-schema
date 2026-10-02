@@ -55,6 +55,8 @@ class InMemoryRegistry:
         version_status: ResourceVersionStatus | None = None,
         date_published_after: date | None = None,
         date_published_before: date | None = None,
+        source_repository: str | None = None,
+        source_identifiers: list[str] | None = None,
     ) -> list[Resource]:
         results = list(self._resources.values())
         if resource_type is not None:
@@ -92,6 +94,13 @@ class InMemoryRegistry:
                 for r in results
                 if r.date_published is not None and r.date_published <= date_published_before
             ]
+        # Exact match, mirroring the Postgres backend's `==` / `IN` — upstream
+        # identifiers are case-significant, unlike the vocabulary filters above.
+        if source_repository is not None:
+            results = [r for r in results if r.source_repository == source_repository]
+        if source_identifiers is not None:
+            wanted = set(source_identifiers)
+            results = [r for r in results if r.source_identifier in wanted]
         return [copy.deepcopy(r) for r in results]
 
     def update_resource(self, resource: Resource) -> Resource:
