@@ -2,6 +2,7 @@
 
 from ._version import __version__
 from .enums import (
+    EnvBuildStatus,
     ExecutionType,
     ImageReviewStatus,
     ResourceRegistrationStatus,
@@ -34,6 +35,7 @@ from .operations import (
     prepare_run,
     register_dataset,
     register_model,
+    set_env_build_status,
     set_image_review_status,
     set_registration_status,
     start_run,
@@ -62,6 +64,7 @@ __all__ = [
     "ResourceRegistrationStatus",
     "RunStatus",
     "ImageReviewStatus",
+    "EnvBuildStatus",
     # Data model
     "Author",
     "Publication",
@@ -97,6 +100,7 @@ __all__ = [
     "set_registration_status",
     "submit_container_image",
     "set_image_review_status",
+    "set_env_build_status",
     "prepare_run",
     "start_run",
     "complete_run",
