@@ -3,6 +3,7 @@
 import pytest
 
 from mism_registry import (
+    EnvBuildStatus,
     ExecutionType,
     ImageReviewStatus,
     IOSlot,
@@ -108,8 +109,29 @@ class TestValidateResourceIsExecutable:
             resource_type=ResourceType.MODEL,
             location_uri="s3://x",
             execution_type=ExecutionType.DOCKER,
+            env_build_status=EnvBuildStatus.RUNNABLE,
         )
         validate_resource_is_executable(r)
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            EnvBuildStatus.NOT_READY,
+            EnvBuildStatus.READY_FOR_BUILD,
+            EnvBuildStatus.BUILDING,
+            EnvBuildStatus.BUILD_FAILED,
+        ],
+    )
+    def test_env_not_runnable_raises(self, status):
+        r = Resource(
+            name="test",
+            resource_type=ResourceType.MODEL,
+            location_uri="s3://x",
+            execution_type=ExecutionType.DOCKER,
+            env_build_status=status,
+        )
+        with pytest.raises(ValidationError, match="runnable"):
+            validate_resource_is_executable(r)
 
     def test_null_execution_type_raises(self):
         r = Resource(name="test", resource_type=ResourceType.MODEL, location_uri="s3://x")

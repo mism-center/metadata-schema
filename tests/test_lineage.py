@@ -1,6 +1,7 @@
 """Tests for lineage tracing across multi-hop pipelines."""
 
 from mism_registry import (
+    EnvBuildStatus,
     ExecutionType,
     InMemoryRegistry,
     IOSlot,
@@ -14,6 +15,7 @@ from mism_registry import (
     prepare_run,
     register_dataset,
     register_model,
+    set_env_build_status,
     set_registration_status,
     start_run,
 )
@@ -43,6 +45,9 @@ def _make_model(registry, name="model", input_tags=(), output_tags=()):
         ResourceRegistrationStatus.APPROVED,
     ):
         model = set_registration_status(registry, resource_id=model.id, target=target)
+    # Env build agent finishes: READY_FOR_BUILD -> BUILDING -> RUNNABLE.
+    for env_target in (EnvBuildStatus.BUILDING, EnvBuildStatus.RUNNABLE):
+        model = set_env_build_status(registry, resource_id=model.id, target=env_target)
     return model
 
 

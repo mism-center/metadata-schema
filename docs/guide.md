@@ -760,6 +760,7 @@ def test_run_lifecycle(registry, sample_dataset, sample_model):
 | `ExecutionType` | `DOCKER`, `CONDA`, `PIP`, `PYTHON`, `R`, `BINARY`, `HUGGINGFACE`, `NOTEBOOK`, `SINGULARITY`, `NEXTFLOW`, `SNAKEMAKE`, `JUPYTER`, `NATIVE`, `OTHER` |
 | `ResourceVersionStatus` | `ACTIVE`, `SUPERSEDED`, `ARCHIVED` |
 | `ResourceRegistrationStatus` | `DRAFT`, `ANNOTATING`, `ANNOTATION_FAILED`, `PENDING_REVIEW`, `REJECTED`, `APPROVED` |
+| `EnvBuildStatus` | `NOT_READY`, `READY_FOR_BUILD`, `BUILDING`, `BUILD_FAILED`, `RUNNABLE` |
 | `RunStatus` | `REGISTERED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` |
 
 ### Exceptions
