@@ -3,6 +3,7 @@
 import pytest
 
 from mism_registry import (
+    EnvBuildStatus,
     ExecutionType,
     InMemoryRegistry,
     IOSlot,
@@ -10,6 +11,7 @@ from mism_registry import (
     ResourceRegistrationStatus,
     register_dataset,
     register_model,
+    set_env_build_status,
     set_registration_status,
 )
 
@@ -22,6 +24,9 @@ def _approve(registry: InMemoryRegistry, resource):
         ResourceRegistrationStatus.APPROVED,
     ):
         resource = set_registration_status(registry, resource_id=resource.id, target=target)
+    # Env build agent finishes: READY_FOR_BUILD -> BUILDING -> RUNNABLE.
+    for env_target in (EnvBuildStatus.BUILDING, EnvBuildStatus.RUNNABLE):
+        resource = set_env_build_status(registry, resource_id=resource.id, target=env_target)
     return resource
 
 
@@ -33,6 +38,9 @@ def _approve(registry: InMemoryRegistry, resource):
         ResourceRegistrationStatus.APPROVED,
     ):
         resource = set_registration_status(registry, resource_id=resource.id, target=status)
+    # Env build agent finishes: READY_FOR_BUILD -> BUILDING -> RUNNABLE.
+    for env_target in (EnvBuildStatus.BUILDING, EnvBuildStatus.RUNNABLE):
+        resource = set_env_build_status(registry, resource_id=resource.id, target=env_target)
     return resource
 
 

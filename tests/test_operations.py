@@ -3,6 +3,7 @@
 import pytest
 
 from mism_registry import (
+    EnvBuildStatus,
     ExecutionType,
     ImageReviewStatus,
     InMemoryRegistry,
@@ -29,6 +30,7 @@ from mism_registry import (
     prepare_run,
     register_dataset,
     register_model,
+    set_env_build_status,
     set_image_review_status,
     set_registration_status,
     start_run,
@@ -428,6 +430,8 @@ class TestPrepareRun:
             ResourceRegistrationStatus.APPROVED,
         ):
             model = set_registration_status(registry, resource_id=model.id, target=target)
+        for env_target in (EnvBuildStatus.BUILDING, EnvBuildStatus.RUNNABLE):
+            model = set_env_build_status(registry, resource_id=model.id, target=env_target)
         with pytest.raises(ValidationError, match="active"):
             prepare_run(
                 registry,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 
 from .enums import (
+    EnvBuildStatus,
     ImageReviewStatus,
     ResourceRegistrationStatus,
     ResourceType,
@@ -48,14 +49,21 @@ def validate_execution_fields(resource: Resource) -> None:
 
 
 def validate_resource_is_executable(resource: Resource) -> None:
-    """Ensure a resource declares how it runs.
+    """Ensure a resource declares how it runs and its environment is built.
 
     A null ``execution_type`` marks a resource non-executable — either
     permanently, or because nothing has determined its run recipe yet.
+    Otherwise the build agent must have marked the environment RUNNABLE.
     """
     if resource.execution_type is None:
         raise ValidationError(
             f"Resource '{resource.id}' has no execution_type and is not executable."
+        )
+    if resource.env_build_status != EnvBuildStatus.RUNNABLE:
+        raise ValidationError(
+            f"Resource '{resource.id}' has env_build_status "
+            f"'{resource.env_build_status.value}', expected 'runnable'. "
+            f"Wait for the environment build to finish before running."
         )
 
 
@@ -203,4 +211,26 @@ def validate_image_review_status_transition(
     if target not in _VALID_IMAGE_REVIEW_TRANSITIONS.get(current, set()):
         raise InvalidStateTransitionError(
             f"Cannot transition image_review_status from {current.value} to {target.value}"
+        )
+
+
+# Legal state transitions for the agent environment-build workflow.
+_E = EnvBuildStatus
+_VALID_ENV_BUILD_TRANSITIONS: dict[EnvBuildStatus, set[EnvBuildStatus]] = {
+    _E.NOT_READY: {_E.READY_FOR_BUILD},
+    _E.READY_FOR_BUILD: {_E.BUILDING},
+    _E.BUILDING: {_E.RUNNABLE, _E.BUILD_FAILED},
+    _E.BUILD_FAILED: {_E.READY_FOR_BUILD},  # retry
+    _E.RUNNABLE: {_E.READY_FOR_BUILD},  # rebuild after the model changes
+}
+
+
+def validate_env_build_status_transition(
+    current: EnvBuildStatus,
+    target: EnvBuildStatus,
+) -> None:
+    """Raise InvalidStateTransitionError if the env-build transition is illegal."""
+    if target not in _VALID_ENV_BUILD_TRANSITIONS.get(current, set()):
+        raise InvalidStateTransitionError(
+            f"Cannot transition env_build_status from {current.value} to {target.value}"
         )
